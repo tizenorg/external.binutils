@@ -1,0 +1,29 @@
+diff -ruNa binutils-2.21.51.20110421.orig/Makefile.def binutils-2.21.51.20110421/Makefile.def
+--- binutils-2.21.51.20110421.orig/Makefile.def	2011-08-10 06:42:05.538939781 +0800
++++ binutils-2.21.51.20110421/Makefile.def	2011-08-10 06:47:40.166938656 +0800
+@@ -403,6 +403,7 @@
+ dependencies = { module=all-gold; on=all-libiberty; };
+ dependencies = { module=all-gold; on=all-intl; };
+ dependencies = { module=all-gold; on=all-bfd; };
++dependencies = { module=all-gold; on=all-opcodes; };
+ dependencies = { module=all-gold; on=all-build-bison; };
+ dependencies = { module=check-gold; on=all-binutils; };
+ dependencies = { module=check-gold; on=all-gas; };
+diff -ruNa binutils-2.21.51.20110421.orig/Makefile.in binutils-2.21.51.20110421/Makefile.in
+--- binutils-2.21.51.20110421.orig/Makefile.in	2011-08-10 06:42:05.534940354 +0800
++++ binutils-2.21.51.20110421/Makefile.in	2011-08-10 06:46:11.326938663 +0800
+@@ -43299,6 +43299,14 @@
+ all-stage4-gold: maybe-all-stage4-bfd
+ all-stageprofile-gold: maybe-all-stageprofile-bfd
+ all-stagefeedback-gold: maybe-all-stagefeedback-bfd
++all-gold: maybe-all-opcodes
++
++all-stage1-gold: maybe-all-stage1-opcodes
++all-stage2-gold: maybe-all-stage2-opcodes
++all-stage3-gold: maybe-all-stage3-opcodes
++all-stage4-gold: maybe-all-stage4-opcodes
++all-stageprofile-gold: maybe-all-stageprofile-opcodes
++all-stagefeedback-gold: maybe-all-stagefeedback-opcodes
+ all-gold: maybe-all-build-bison
+ 
+ all-stage1-gold: maybe-all-build-bison

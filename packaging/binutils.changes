@@ -1,0 +1,52 @@
+* Tue Aug 2 2011 Junfeng Dong <junfeng.dong@intel.com> - 2.21.51.20110421
+- Import 2.21.51.20110421 from SLP.
+
+* Sun Apr 24 08:02:35 UTC 2011 - Jan-Simon Möller <jsmoeller@linuxfoundation.org> - 1.0
+- Add baselibs.conf to src.rpm
+
+* Fri Jan  7 2011 Carsten Munk <carsten@maemo.org> - 2.20.51.0.2
+- Add armv7hl, armv7nhl cross-binutils- packages. Part of fix for BMC#11463
+
+* Fri Dec 31 2010 Carsten Munk <carsten@maemo.org> - 2.20.51.0.2
+- Add support for Tag_MPextension_use and Tag_DIV_use. Fixes BMC#11431
+
+* Wed Dec 29 2010 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
+- Bugfixing: 
+  BMC#10336 - Error when installing binutils with --excludedocs in .ks 
+
+* Tue May 25 2010 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
+- enable LTO (link time optimization)
+
+* Mon May 03 2010 Jan-Simon Möller <jansimon.moeller@linuxfoundation.org> - 2.20.51.0.2
+- Add precheckin.sh, README.packager
+- add cross-binutils-* packages (cross-compiler)
+
+* Thu Mar 04 2010 Anas Nashif <anas.nashif@intel.com> - 2.20.51.0.2
+- Use %{_target_platform} as the build target
+
+* Fri Dec 12 2009 Arjan van de Ven <arjan@linux.intel.com> - 2.20.51.0.2
+- add the LD_AS_NEEDED env variable back, and get us closer to upstream
+
+* Fri Nov 27 2009 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
+- Update to 2.20.51.0.2
+
+* Sat Aug 22 2009 Anas Nashif <anas.nashif@intel.com> - 2.19.51.0.14
+- Update to 2.19.51.0.14
+
+* Wed May 06 2009 Arjan van de Ven <arjan@linux.intel.com> 2.19
+- Add LD_AS_NEEDED environment variable
+
+* Tue Jan 13 2009 Anas Nashif <anas.nashif@intel.com> 2.19
+- Fixed source tag
+
+* Thu Jan 08 2009 Anas Nashif <anas.nashif@intel.com> 2.19
+- Update to 2.19
+
+* Tue Dec 16 2008 Anas Nashif <anas.nashif@intel.com> 2.18.50.0.6
+- Fixed rpmlint errors in Summary tag
+
+* Thu Dec 11 2008 Anas Nashif <anas.nashif@intel.com> 2.18.50.0.6
+- Do not check for ia64
+
+* Thu Sep 18 2008 Austin Zhang <austin.zhang@intel.com> 2.18.50.0.6
+- add check for the info file before installation
