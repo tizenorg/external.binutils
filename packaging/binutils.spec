@@ -16,6 +16,7 @@ Source2: binutils-2.19.50.0.1-output-format.sed
 Source100: baselibs.conf
 Source200: precheckin.sh
 Source201: README.PACKAGER
+Source1001: packaging/binutils.manifest 
 Patch1: 001_ld_makefile_patch.patch
 Patch2: 006_better_file_error.patch
 Patch3: 012_check_ldrunpath_length.patch
@@ -158,6 +159,7 @@ done
 touch */configure
 
 %build
+cp %{SOURCE1001} .
 echo target is %{binutils_target}
 export CFLAGS="$RPM_OPT_FLAGS"
 CARGS=
@@ -319,6 +321,7 @@ rm -rf %{buildroot}%{_libdir}/ldscripts
 %postun -p /sbin/ldconfig
 
 %files 
+%manifest binutils.manifest
 %defattr(-,root,root,-)
 %{_prefix}/bin/*
 %{_mandir}/man1/*
@@ -330,6 +333,7 @@ rm -rf %{buildroot}%{_libdir}/ldscripts
 %if %{isnative}
 
 %files devel
+%manifest binutils.manifest
 %defattr(-,root,root,-)
 %{_prefix}/include/*
 %{_prefix}/%{_lib}/libbfd.so
