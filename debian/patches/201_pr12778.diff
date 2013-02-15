@@ -1,0 +1,37 @@
+# DP: Fix PR ld/12778, proposed patch by Rafal Krypa <r.krypa@samsung.com>
+
+diff --git a/bfd/elf32-arm.c b/bfd/elf32-arm.c
+index faf18d0..89bb94e 100644
+--- a/bfd/elf32-arm.c
++++ b/bfd/elf32-arm.c
+@@ -12027,29 +12027,29 @@ elf32_arm_gc_sweep_hook (bfd *                     abfd,
+ 	  if (h != NULL)
+ 	    pp = &((struct elf32_arm_link_hash_entry *) h)->dyn_relocs;
+ 	  else
+ 	    {
+ 	      Elf_Internal_Sym *isym;
+ 
+ 	      isym = bfd_sym_from_r_symndx (&globals->sym_cache,
+ 					    abfd, r_symndx);
+ 	      if (isym == NULL)
+ 		return FALSE;
+ 	      pp = elf32_arm_get_local_dynreloc_list (abfd, r_symndx, isym);
+ 	      if (pp == NULL)
+ 		return FALSE;
+ 	    }
+-	  for (pp = &eh->dyn_relocs; (p = *pp) != NULL; pp = &p->next)
++	  for (; (p = *pp) != NULL; pp = &p->next)
+ 	    if (p->sec == sec)
+ 	      {
+ 		/* Everything must go for SEC.  */
+ 		*pp = p->next;
+ 		break;
+ 	      }
+ 	}
+     }
+ 
+   return TRUE;
+ }
+ 
+ /* Look through the relocs for a section during the first phase.  */
+ 

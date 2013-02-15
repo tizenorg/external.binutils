@@ -1,0 +1,392 @@
+# DP: Fix PR ld/12730, taken from the trunk
+
+2011-05-07  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR ld/12730
+	* elf.c (_bfd_elf_section_offset): Check SEC_ELF_REVERSE_COPY.
+
+	* elflink.c (elf_link_input_bfd): Reverse copy .ctors/.dtors
+	sections if needed. 
+
+	* section.c (SEC_ELF_REVERSE_COPY): New.
+	* bfd-in2.h: Regenerated.
+
+2011-05-07  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR ld/12730
+	* ld-elf/elf.exp (array_tests): Add "pr12730".
+	(array_tests_pie): New.
+	(array_tests_static): Add -static for "static init array mixed".
+	Add "static pr12730".  Run array_tests_pie for Linux.
+
+	* ld-elf/init-mixed.c (ctor1007): Renamed to ...
+	(ctor1007a): This.
+	(ctor1007b): New.
+	(ctors1007): Remove ctor1007.  Add ctor1007b and ctor1007a.
+	(dtor1007): Renamed to ...
+	(dtor1007a): This.
+	(dtor1007b): New.
+	(dtors1007): Remove dtor1007.  Add dtor1007b and dtor1007a.
+	(ctor65535): Renamed to ...
+	(ctor65535a): This.
+	(ctor65535b): New.
+	(ctors65535): Remove ctor65535.  Add ctor65535b and ctor65535a.
+	(dtor65535): Renamed to ...
+	(dtor65535a): This.
+	(dtor65535b): New.
+	(dtors65535): Remove dtor65535.  Add dtor65535b and dtor65535a.
+
+	* ld-elf/pr12730.cc: New.
+	* ld-elf/pr12730.out: Likewise.
+
+diff --git a/bfd/bfd-in2.h b/bfd/bfd-in2.h
+index aa12c8a..5076ccf 100644
+--- a/bfd/bfd-in2.h
++++ b/bfd/bfd-in2.h
+@@ -1320,6 +1320,11 @@ typedef struct bfd_section
+      sections.  */
+ #define SEC_COFF_SHARED_LIBRARY 0x4000000
+ 
++  /* This input section should be copied to output in reverse order
++     as an array of pointers.  This is for ELF linker internal use
++     only.  */
++#define SEC_ELF_REVERSE_COPY 0x4000000
++
+   /* This section contains data which may be shared with other
+      executables or shared objects. This is for COFF only.  */
+ #define SEC_COFF_SHARED 0x8000000
+diff --git a/bfd/elf.c b/bfd/elf.c
+index b5a1952..6fccf42 100644
+--- a/bfd/elf.c
++++ b/bfd/elf.c
+@@ -9379,6 +9379,12 @@ _bfd_elf_section_offset (bfd *abfd,
+     case ELF_INFO_TYPE_EH_FRAME:
+       return _bfd_elf_eh_frame_section_offset (abfd, info, sec, offset);
+     default:
++      if ((sec->flags & SEC_ELF_REVERSE_COPY) != 0)
++	{
++	  const struct elf_backend_data *bed = get_elf_backend_data (abfd);
++	  bfd_size_type address_size = bed->s->arch_size / 8;
++	  offset = sec->size - offset - address_size;
++	}
+       return offset;
+     }
+ }
+diff --git a/bfd/elflink.c b/bfd/elflink.c
+index 082355d..e4f728d 100644
+--- a/bfd/elflink.c
++++ b/bfd/elflink.c
+@@ -9120,6 +9120,9 @@ elf_link_input_bfd (struct elf_final_link_info *finfo, bfd *input_bfd)
+   asection *o;
+   const struct elf_backend_data *bed;
+   struct elf_link_hash_entry **sym_hashes;
++  bfd_size_type address_size;
++  bfd_vma r_type_mask;
++  int r_sym_shift;
+ 
+   output_bfd = finfo->output_bfd;
+   bed = get_elf_backend_data (output_bfd);
+@@ -9290,6 +9293,19 @@ elf_link_input_bfd (struct elf_final_link_info *finfo, bfd *input_bfd)
+ 	*pindex = indx;
+     }
+ 
++  if (bed->s->arch_size == 32)
++    {
++      r_type_mask = 0xff;
++      r_sym_shift = 8;
++      address_size = 4;
++    }
++  else
++    {
++      r_type_mask = 0xffffffff;
++      r_sym_shift = 32;
++      address_size = 8;
++    }
++
+   /* Relocate the contents of each section.  */
+   sym_hashes = elf_sym_hashes (input_bfd);
+   for (o = input_bfd->sections; o != NULL; o = o->next)
+@@ -9394,8 +9410,6 @@ elf_link_input_bfd (struct elf_final_link_info *finfo, bfd *input_bfd)
+ 	{
+ 	  Elf_Internal_Rela *internal_relocs;
+ 	  Elf_Internal_Rela *rel, *relend;
+-	  bfd_vma r_type_mask;
+-	  int r_sym_shift;
+ 	  int action_discarded;
+ 	  int ret;
+ 
+@@ -9407,15 +9421,27 @@ elf_link_input_bfd (struct elf_final_link_info *finfo, bfd *input_bfd)
+ 	      && o->reloc_count > 0)
+ 	    return FALSE;
+ 
+-	  if (bed->s->arch_size == 32)
++	  /* We need to reverse-copy input .ctors/.dtors sections if
++	     they are placed in .init_array/.finit_array for output.  */
++	  if (o->size > address_size
++	      && ((strncmp (o->name, ".ctors", 6) == 0
++		   && strcmp (o->output_section->name,
++			      ".init_array") == 0)
++		  || (strncmp (o->name, ".dtors", 6) == 0
++		      && strcmp (o->output_section->name,
++				 ".fini_array") == 0))
++	      && (o->name[6] == 0 || o->name[6] == '.'))
+ 	    {
+-	      r_type_mask = 0xff;
+-	      r_sym_shift = 8;
+-	    }
+-	  else
+-	    {
+-	      r_type_mask = 0xffffffff;
+-	      r_sym_shift = 32;
++	      if (o->size != o->reloc_count * address_size)
++		{
++		  (*_bfd_error_handler)
++		    (_("error: %B: size of section %A is not "
++		       "multiple of address size"),
++		     input_bfd, o);
++		  bfd_set_error (bfd_error_on_input);
++		  return FALSE;
++		}
++	      o->flags |= SEC_ELF_REVERSE_COPY;
+ 	    }
+ 
+ 	  action_discarded = -1;
+@@ -9876,12 +9902,34 @@ elf_link_input_bfd (struct elf_final_link_info *finfo, bfd *input_bfd)
+ 	default:
+ 	  {
+ 	    /* FIXME: octets_per_byte.  */
+-	    if (! (o->flags & SEC_EXCLUDE)
+-		&& ! bfd_set_section_contents (output_bfd, o->output_section,
+-					       contents,
+-					       (file_ptr) o->output_offset,
+-					       o->size))
+-	      return FALSE;
++	    if (! (o->flags & SEC_EXCLUDE))
++	      {
++		file_ptr offset = (file_ptr) o->output_offset;
++		bfd_size_type todo = o->size;
++		if ((o->flags & SEC_ELF_REVERSE_COPY))
++		  {
++		    /* Reverse-copy input section to output.  */
++		    do
++		      {
++			todo -= address_size;
++			if (! bfd_set_section_contents (output_bfd,
++							o->output_section,
++							contents + todo,
++							offset,
++							address_size))
++			  return FALSE;
++			if (todo == 0)
++			  break;
++			offset += address_size;
++		      }
++		    while (1);
++		  }
++		else if (! bfd_set_section_contents (output_bfd,
++						     o->output_section,
++						     contents,
++						     offset, todo))
++		  return FALSE;
++	      }
+ 	  }
+ 	  break;
+ 	}
+diff --git a/bfd/section.c b/bfd/section.c
+index 65ac5e6..3cd7e65 100644
+--- a/bfd/section.c
++++ b/bfd/section.c
+@@ -327,6 +327,11 @@ CODE_FRAGMENT
+ .     sections.  *}
+ .#define SEC_COFF_SHARED_LIBRARY 0x4000000
+ .
++.  {* This input section should be copied to output in reverse order
++.     as an array of pointers.  This is for ELF linker internal use
++.     only.  *}
++.#define SEC_ELF_REVERSE_COPY 0x4000000
++.
+ .  {* This section contains data which may be shared with other
+ .     executables or shared objects. This is for COFF only.  *}
+ .#define SEC_COFF_SHARED 0x8000000
+diff --git a/ld/testsuite/ld-elf/elf.exp b/ld/testsuite/ld-elf/elf.exp
+index 73a417c..6808d8a 100644
+--- a/ld/testsuite/ld-elf/elf.exp
++++ b/ld/testsuite/ld-elf/elf.exp
+@@ -81,17 +81,32 @@ set array_tests {
+     {"init array" "" "" {init.c} "init" "init.out"}
+     {"fini array" "" "" {fini.c} "fini" "fini.out"}
+     {"init array mixed" "" "" {init-mixed.c} "init-mixed" "init-mixed.out" "-I."}
++    {"pr12730" "" "" {pr12730.cc} "pr12730" "pr12730.out" "" "c++"}
++}
++set array_tests_pie {
++    {"PIE preinit array" "-pie" "" {preinit.c} "preinit" "preinit.out" "-fPIE" }
++    {"PIE init array" "-pie" "" {init.c} "init" "init.out" "-fPIE"}
++    {"PIE fini array" "-pie" "" {fini.c} "fini" "fini.out" "-fPIE"}
++    {"PIE init array mixed" "-pie" "" {init-mixed.c} "init-mixed" "init-mixed.out" "-I. -fPIE"}
++    {"PIE pr12730" "-pie" "" {pr12730.cc} "pr12730" "pr12730.out" "-fPIE" "c++"}
+ }
+ set array_tests_static {
+     {"static preinit array" "-static" "" {preinit.c} "preinit" "preinit.out"}
+     {"static init array" "-static" "" {init.c} "init" "init.out"}
+     {"static fini array" "-static" "" {fini.c} "fini" "fini.out"}
+-    {"static init array mixed" "" "" {init-mixed.c} "init-mixed" "init-mixed.out" "-I."}
++    {"static init array mixed" "-static" "" {init-mixed.c} "init-mixed" "init-mixed.out" "-I."}
++    {"static pr12730" "-static" "" {pr12730.cc} "pr12730" "pr12730.out" "" "c++"}
+ }
+ 
+ # NetBSD ELF systems do not currently support the .*_array sections.
+ set xfails [list "*-*-netbsdelf*"]
+ run_ld_link_exec_tests $xfails $array_tests
++
++# Run PIE tests only on Linux.
++if { [istarget "*-*-linux*"] } {
++    run_ld_link_exec_tests $xfails $array_tests_pie
++}
++
+ # Be cautious to not XFAIL for *-*-linux-gnu*, *-*-kfreebsd-gnu*, etc.
+ switch -regexp $target_triplet {
+     ^\[^-\]*-\[^-\]*-gnu.*$ {
+diff --git a/ld/testsuite/ld-elf/init-mixed.c b/ld/testsuite/ld-elf/init-mixed.c
+index 1d0c727..770a4b5 100644
+--- a/ld/testsuite/ld-elf/init-mixed.c
++++ b/ld/testsuite/ld-elf/init-mixed.c
+@@ -27,25 +27,39 @@ void (*const fini_array1005[]) ()
+   = { fini1005 };
+ 
+ static void
+-ctor1007 ()
++ctor1007a ()
+ {
+   if (count != 1005)
+     abort ();
++  count = 1006;
++}
++static void
++ctor1007b ()
++{
++  if (count != 1006)
++    abort ();
+   count = 1007;
+ }
+ void (*const ctors1007[]) ()
+   __attribute__ ((section (".ctors.64528"), aligned (sizeof (void *))))
+-  = { ctor1007 };
++  = { ctor1007b, ctor1007a };
+ static void
+-dtor1007 ()
++dtor1007a ()
+ {
+-  if (count != 1007)
++  if (count != 1006)
+     abort ();
+   count = 1005;
+ }
++static void
++dtor1007b ()
++{
++  if (count != 1007)
++    abort ();
++  count = 1006;
++}
+ void (*const dtors1007[]) ()
+   __attribute__ ((section (".dtors.64528"), aligned (sizeof (void *))))
+-  = { dtor1007 };
++  = { dtor1007b, dtor1007a };
+ 
+ static void
+ init65530 ()
+@@ -69,17 +83,31 @@ void (*const fini_array65530[]) ()
+   = { fini65530 };
+ 
+ static void
+-ctor65535 ()
++ctor65535a ()
+ {
+   if (count != 65530)
+     abort ();
+   count = 65535;
+ }
++static void
++ctor65535b ()
++{
++  if (count != 65535)
++    abort ();
++  count = 65536;
++}
+ void (*const ctors65535[]) ()
+   __attribute__ ((section (".ctors"), aligned (sizeof (void *))))
+-  = { ctor65535 };
++  = { ctor65535b, ctor65535a };
++static void
++dtor65535b ()
++{
++  if (count != 65536)
++    abort ();
++  count = 65535;
++}
+ static void
+-dtor65535 ()
++dtor65535a ()
+ {
+   if (count != 65535)
+     abort ();
+@@ -87,7 +115,7 @@ dtor65535 ()
+ }
+ void (*const dtors65535[]) ()
+   __attribute__ ((section (".dtors"), aligned (sizeof (void *))))
+-  = { dtor65535 };
++  = { dtor65535b, dtor65535a };
+ #endif
+ 
+ int
+diff --git a/ld/testsuite/ld-elf/pr12730.cc b/ld/testsuite/ld-elf/pr12730.cc
+new file mode 100644
+index 0000000..69f57f9
+--- /dev/null
++++ b/ld/testsuite/ld-elf/pr12730.cc
+@@ -0,0 +1,38 @@
++#include <iostream>
++
++class Hello
++{
++public:
++   Hello ()
++    {}
++
++  ~Hello ()
++    {}
++
++  void act ()
++    { std::cout << "Hello, world!" << std::endl; }
++};
++
++
++template <class T>
++struct Foo
++{
++  T* _M_allocate_single_object ()
++    {
++      return new T;
++    }
++};
++
++static void __attribute__ (( constructor )) PWLIB_StaticLoader() {
++  Foo<Hello> allocator;
++  Hello* salut = allocator._M_allocate_single_object ();
++  salut->act ();
++}
++
++
++int
++main (int /*argc*/,
++      char* /*argv*/[])
++{
++  return 0;
++}
+diff --git a/ld/testsuite/ld-elf/pr12730.out b/ld/testsuite/ld-elf/pr12730.out
+new file mode 100644
+index 0000000..af5626b
+--- /dev/null
++++ b/ld/testsuite/ld-elf/pr12730.out
+@@ -0,0 +1 @@
++Hello, world!

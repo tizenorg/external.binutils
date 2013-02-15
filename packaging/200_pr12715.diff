@@ -1,0 +1,34 @@
+# DP: Fix PR gas/12715, taken from the trunk
+
+diff --git a/gas/config/tc-arm.c b/gas/config/tc-arm.c
+index af8c4aa..33c5deb 100644
+--- a/gas/config/tc-arm.c
++++ b/gas/config/tc-arm.c
+@@ -4450,7 +4450,7 @@ parse_big_immediate (char **str, int i)
+       /* If we're on a 64-bit host, then a 64-bit number can be returned using
+ 	 O_constant.  We have to be careful not to break compilation for
+ 	 32-bit X_add_number, though.  */
+-      if ((exp.X_add_number & ~0xffffffffl) != 0)
++      if ((exp.X_add_number & ~(offsetT)(0xffffffffU)) != 0)
+ 	{
+           /* X >> 32 is illegal if sizeof (exp.X_add_number) == 4.  */
+ 	  inst.operands[i].reg = ((exp.X_add_number >> 16) >> 16) & 0xffffffff;
+diff --git a/gas/testsuite/gas/arm/neon-const.d b/gas/testsuite/gas/arm/neon-const.d
+index a1bc97c..6c46930 100644
+--- a/gas/testsuite/gas/arm/neon-const.d
++++ b/gas/testsuite/gas/arm/neon-const.d
+@@ -263,3 +263,4 @@ Disassembly of section .text:
+ 0[0-9a-f]+ <[^>]+> f3850f5f 	vmov\.f32	q0, #-0\.484375	; 0xbef80000
+ 0[0-9a-f]+ <[^>]+> f3860f5f 	vmov\.f32	q0, #-0\.96875	; 0xbf780000
+ 0[0-9a-f]+ <[^>]+> f3870f5f 	vmov\.f32	q0, #-1\.9375	; 0xbff80000
++0[0-9a-f]+ <[^>]+> f3879e3f 	vmov\.i64	d9, #0xffffffffffffffff
+diff --git a/gas/testsuite/gas/arm/neon-const.s b/gas/testsuite/gas/arm/neon-const.s
+index a6fb550..aaaf144 100644
+--- a/gas/testsuite/gas/arm/neon-const.s
++++ b/gas/testsuite/gas/arm/neon-const.s
+@@ -295,3 +295,5 @@
+         vmov.f32 q0, -0.484375
+         vmov.f32 q0, -0.96875
+         vmov.f32 q0, -1.9375
++
++	vmov.i64 d9, #0xffffffffffffffff
