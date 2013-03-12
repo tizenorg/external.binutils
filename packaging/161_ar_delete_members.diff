@@ -1,0 +1,41 @@
+--- a/binutils/ar.c
++++ b/binutils/ar.c
+@@ -1069,7 +1069,6 @@
+ 
+   if (smart_rename (new_name, old_name, 0) != 0)
+     xexit (1);
+-  free (old_name);
+ }
+ 
+ /* Return a pointer to the pointer to the entry which should be rplacd'd
+@@ -1119,7 +1118,6 @@
+   bfd_boolean found;
+   bfd_boolean something_changed = FALSE;
+   int match_count;
+-  const char * tmp = NULL;
+ 
+   for (; *files_to_delete != NULL; ++files_to_delete)
+     {
+@@ -1141,10 +1139,8 @@
+       current_ptr_ptr = &(arch->archive_next);
+       while (*current_ptr_ptr)
+ 	{
+-	  if (tmp != NULL)
+-	    free ((char *) tmp);
+-	  tmp = normalize (*files_to_delete, arch);
+-	  if (FILENAME_CMP (tmp, (*current_ptr_ptr)->filename) == 0)
++	  if (FILENAME_CMP (normalize (*files_to_delete, arch),
++			    (*current_ptr_ptr)->filename) == 0)
+ 	    {
+ 	      ++match_count;
+ 	      if (counted_name_mode
+@@ -1181,9 +1177,6 @@
+     write_archive (arch);
+   else
+     output_filename = NULL;
+-
+-  if (tmp != NULL)
+-    free ((char *) tmp);
+ }
+ 
+ 
