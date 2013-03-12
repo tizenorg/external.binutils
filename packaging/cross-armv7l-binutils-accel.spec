@@ -6,7 +6,7 @@
 
 Summary: A GNU collection of binary utilities
 Name: cross-armv7l-binutils-accel
-Version: 2.22
+Version: 2.21.51.20110421
 Release: 1.21.Mer
 License: GPLv3+
 Group: Development/Tools
