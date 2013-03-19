@@ -138,18 +138,23 @@ dump_incremental_inputs(const char* argv0, const char* filename,
       switch (input_type)
 	{
 	case INCREMENTAL_INPUT_OBJECT:
-	  printf("Object\n");
-	  printf("    Input section count: %d\n",
-		 input_file.get_input_section_count());
-	  printf("    Symbol count: %d\n",
-		 input_file.get_global_symbol_count());
-	  break;
 	case INCREMENTAL_INPUT_ARCHIVE_MEMBER:
-	  printf("Archive member\n");
+	  printf("%s\n", (input_type == INCREMENTAL_INPUT_OBJECT
+			  ? "Object" : "Archive member"));
 	  printf("    Input section count: %d\n",
 		 input_file.get_input_section_count());
-	  printf("    Symbol count: %d\n",
+	  printf("    Global symbol count: %d\n",
 		 input_file.get_global_symbol_count());
+	  printf("    Local symbol offset: %d\n",
+		 input_file.get_local_symbol_offset());
+	  printf("    Local symbol count: %d\n",
+		 input_file.get_local_symbol_count());
+	  printf("    First dynamic reloc: %d\n",
+		 input_file.get_first_dyn_reloc());
+	  printf("    Dynamic reloc count: %d\n",
+		 input_file.get_dyn_reloc_count());
+	  printf("    COMDAT group count: %d\n",
+		 input_file.get_comdat_group_count());
 	  break;
 	case INCREMENTAL_INPUT_ARCHIVE:
 	  printf("Archive\n");
@@ -159,6 +164,10 @@ dump_incremental_inputs(const char* argv0, const char* filename,
 	  break;
 	case INCREMENTAL_INPUT_SHARED_LIBRARY:
 	  printf("Shared library\n");
+	  printf("    As needed: %s\n",
+		 input_file.as_needed() ? "true" : "false");
+	  printf("    soname: %s\n",
+		 input_file.get_soname());
 	  printf("    Symbol count: %d\n",
 		 input_file.get_global_symbol_count());
 	  break;
@@ -205,6 +214,11 @@ dump_incremental_inputs(const char* argv0, const char* filename,
 		 static_cast<long long>(info.sh_size),
 		 info.name);
 	}
+
+      unsigned int ncomdat = input_file.get_comdat_group_count();
+      for (unsigned int i = 0; i < ncomdat; ++i)
+	printf("    Comdat group: %s\n",
+	       input_file.get_comdat_group_signature(i));
     }
 
   // Get a view of the .symtab section.
@@ -279,8 +293,9 @@ dump_incremental_inputs(const char* argv0, const char* filename,
 	  for (unsigned int symndx = 0; symndx < nsyms; ++symndx)
 	    {
 	      bool is_def;
+	      bool is_copy;
 	      unsigned int output_symndx =
-		  input_file.get_output_symbol_index(symndx, &is_def);
+		  input_file.get_output_symbol_index(symndx, &is_def, &is_copy);
 	      sym_p = symtab_view.data() + output_symndx * sym_size;
 	      elfcpp::Sym<size, big_endian> sym(sym_p);
 	      const char* symname;
@@ -289,7 +304,7 @@ dump_incremental_inputs(const char* argv0, const char* filename,
 	      printf("    %6d  %6s  %8s  %8s  %8s  %8s  %-5s  %s\n",
 		     output_symndx,
 		     "", "", "", "", "",
-		     is_def ? "DEF" : "UNDEF",
+		     is_copy ? "COPY" : (is_def ? "DEF" : "UNDEF"),
 		     symname);
 	    }
 	}
@@ -307,12 +322,14 @@ dump_incremental_inputs(const char* argv0, const char* filename,
 		symname = "<unknown>";
 	      printf("    %6d  %6d  %8d  %8d  %8d  %8d  %-5s  %s\n",
 		     output_symndx,
-		     info.shndx(),
+		     info.shndx() == -1U ? -1 : info.shndx(),
 		     input_file.get_symbol_offset(symndx),
 		     info.next_offset(),
 		     info.reloc_count(),
 		     info.reloc_offset(),
-		     info.shndx() != elfcpp::SHN_UNDEF ? "DEF" : "UNDEF",
+		     (info.shndx() == -1U
+		      ? "BASE"
+		      : info.shndx() == 0 ? "UNDEF" : "DEF"),
 		     symname);
 	    }
 	}
@@ -369,24 +386,26 @@ dump_incremental_inputs(const char* argv0, const char* filename,
   for (unsigned int i = 0; i < ngot; ++i)
     {
       unsigned int got_type = igot_plt.get_got_type(i);
-      unsigned int got_desc = igot_plt.get_got_desc(i);
+      unsigned int got_symndx = igot_plt.get_got_symndx(i);
+      unsigned int got_input_index = igot_plt.get_got_input_index(i);
       printf("[%d] type %02x, ", i, got_type & 0x7f);
-      if (got_type == 0x7f)
+      if ((got_type & 0x7f) == 0x7f)
 	printf("reserved");
       else if (got_type & 0x80)
 	{
-	  Entry_reader input_file = incremental_inputs.input_file(got_desc);
+	  Entry_reader input_file =
+	      incremental_inputs.input_file(got_input_index);
 	  const char* objname = input_file.filename();
-	  printf("local: %s (%d)", objname, got_desc);
+	  printf("local: %s (%d)", objname, got_symndx);
 	}
       else
 	{
-	  sym_p = symtab_view.data() + got_desc * sym_size;
+	  sym_p = symtab_view.data() + got_symndx * sym_size;
 	  elfcpp::Sym<size, big_endian> sym(sym_p);
 	  const char* symname;
 	  if (!strtab.get_c_string(sym.get_st_name(), &symname))
 	    symname = "<unknown>";
-	  printf("global %s (%d)", symname, got_desc);
+	  printf("global %s (%d)", symname, got_symndx);
 	}
       printf("\n");
     }
@@ -440,10 +459,10 @@ main(int argc, char** argv)
 
   Output_file* file = new Output_file(filename);
 
-  bool t = file->open_for_modification();
+  bool t = file->open_base_file(NULL, false);
   if (!t)
     {
-      fprintf(stderr, "%s: open_for_modification(%s): %s\n", argv[0], filename,
+      fprintf(stderr, "%s: open_base_file(%s): %s\n", argv[0], filename,
               strerror(errno));
       return 1;
     }

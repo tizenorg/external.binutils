@@ -915,6 +915,9 @@ coff_write_symbol (bfd *abfd,
   unsigned int numaux = native->u.syment.n_numaux;
   int type = native->u.syment.n_type;
   int n_sclass = (int) native->u.syment.n_sclass;
+  asection *output_section = symbol->section->output_section
+			       ? symbol->section->output_section
+			       : symbol->section;
   void * buf;
   bfd_size_type symesz;
 
@@ -933,7 +936,7 @@ coff_write_symbol (bfd *abfd,
 
   else
     native->u.syment.n_scnum =
-      symbol->section->output_section->target_index;
+      output_section->target_index;
 
   coff_fix_symbol_name (abfd, symbol, native, string_size_p,
 			debug_string_section_p, debug_string_size_p);
@@ -990,6 +993,9 @@ coff_write_alien_symbol (bfd *abfd,
 {
   combined_entry_type *native;
   combined_entry_type dummy;
+  asection *output_section = symbol->section->output_section
+			       ? symbol->section->output_section
+			       : symbol->section;
 
   native = &dummy;
   native->u.syment.n_type = T_NULL;
@@ -1015,12 +1021,11 @@ coff_write_alien_symbol (bfd *abfd,
     }
   else
     {
-      native->u.syment.n_scnum =
-	symbol->section->output_section->target_index;
+      native->u.syment.n_scnum = output_section->target_index;
       native->u.syment.n_value = (symbol->value
 				  + symbol->section->output_offset);
       if (! obj_pe (abfd))
-	native->u.syment.n_value += symbol->section->output_section->vma;
+	native->u.syment.n_value += output_section->vma;
 
       /* Copy the any flags from the file header into the symbol.
          FIXME: Why?  */
@@ -2393,4 +2398,71 @@ bfd_coff_get_comdat_section (bfd *abfd, struct bfd_section *sec)
     return coff_section_data (abfd, sec)->comdat;
   else
     return NULL;
+}
+
+bfd_boolean
+_bfd_coff_section_already_linked (bfd *abfd,
+				  asection *sec,
+				  struct bfd_link_info *info)
+{
+  flagword flags;
+  const char *name, *key;
+  struct bfd_section_already_linked *l;
+  struct bfd_section_already_linked_hash_entry *already_linked_list;
+  struct coff_comdat_info *s_comdat;
+
+  flags = sec->flags;
+  if ((flags & SEC_LINK_ONCE) == 0)
+    return FALSE;
+
+  /* The COFF backend linker doesn't support group sections.  */
+  if ((flags & SEC_GROUP) != 0)
+    return FALSE;
+
+  name = bfd_get_section_name (abfd, sec);
+  s_comdat = bfd_coff_get_comdat_section (abfd, sec);
+
+  if (s_comdat != NULL)
+    key = s_comdat->name;
+  else
+    {
+      if (CONST_STRNEQ (name, ".gnu.linkonce.")
+	  && (key = strchr (name + sizeof (".gnu.linkonce.") - 1, '.')) != NULL)
+	key++;
+      else
+	/* FIXME: gcc as of 2011-09 emits sections like .text$<key>,
+	   .xdata$<key> and .pdata$<key> only the first of which has a
+	   comdat key.  Should these all match the LTO IR key?  */
+	key = name;
+    }
+
+  already_linked_list = bfd_section_already_linked_table_lookup (key);
+
+  for (l = already_linked_list->entry; l != NULL; l = l->next)
+    {
+      struct coff_comdat_info *l_comdat;
+
+      l_comdat = bfd_coff_get_comdat_section (l->sec->owner, l->sec);
+
+      /* The section names must match, and both sections must be
+	 comdat and have the same comdat name, or both sections must
+	 be non-comdat.  LTO IR plugin sections are an exception.  They
+	 are always named .gnu.linkonce.t.<key> (<key> is some string)
+	 and match any comdat section with comdat name of <key>, and
+	 any linkonce section with the same suffix, ie.
+	 .gnu.linkonce.*.<key>.  */
+      if (((s_comdat != NULL) == (l_comdat != NULL)
+	   && strcmp (name, l->sec->name) == 0)
+	  || (l->sec->owner->flags & BFD_PLUGIN) != 0)
+	{
+	  /* The section has already been linked.  See if we should
+	     issue a warning.  */
+	  return _bfd_handle_already_linked (sec, l, info);
+	}
+    }
+
+  /* This is the first section with this name.  Record it.  */
+  if (!bfd_section_already_linked_table_insert (already_linked_list, sec))
+    info->callbacks->einfo (_("%F%P: already_linked_table: %E\n"));
+  return FALSE;
 }

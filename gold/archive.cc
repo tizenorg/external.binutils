@@ -113,6 +113,11 @@ Library_base::should_include_member(Symbol_table* symtab, Layout* layout,
 	  *why = buf;
 	  delete[] buf;
 	}
+      else if (strcmp(sym_name, parameters->entry()) == 0)
+	{
+	  *why = "entry symbol ";
+	  *why += sym_name;
+	}
       else
 	return Library_base::SHOULD_INCLUDE_UNKNOWN;
     }
@@ -174,7 +179,8 @@ Archive::Archive(const std::string& name, Input_file* input_file,
   : Library_base(task), name_(name), input_file_(input_file), armap_(),
     armap_names_(), extended_names_(), armap_checked_(), seen_offsets_(),
     members_(), is_thin_archive_(is_thin_archive), included_member_(false),
-    nested_archives_(), dirpath_(dirpath), num_members_(0)
+    nested_archives_(), dirpath_(dirpath), num_members_(0),
+    included_all_members_(false)
 {
   this->no_export_ =
     parameters->options().check_excluded_libs(input_file->found_name());
@@ -647,7 +653,8 @@ Archive::get_elf_object_for_member(off_t off, bool* punconfigured)
     {
       Object* obj = parameters->options().plugins()->claim_file(input_file,
                                                                 memoff,
-                                                                memsize);
+                                                                memsize,
+								NULL);
       if (obj != NULL)
         {
           // The input file was claimed by a plugin, and its symbols
@@ -842,6 +849,13 @@ bool
 Archive::include_all_members(Symbol_table* symtab, Layout* layout,
                              Input_objects* input_objects, Mapfile* mapfile)
 {
+  // Don't include the same archive twice.  This can happen if
+  // --whole-archive is nested inside --start-group (PR gold/12163).
+  if (this->included_all_members_)
+    return true;
+
+  this->included_all_members_ = true;
+
   input_objects->archive_start(this);
 
   if (this->members_.size() > 0)

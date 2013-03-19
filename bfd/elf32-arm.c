@@ -229,8 +229,8 @@ static reloc_howto_type elf32_arm_howto_table_1[] =
 	 bfd_elf_generic_reloc,	/* special_function */
 	 "R_ARM_THM_CALL",	/* name */
 	 FALSE,			/* partial_inplace */
-	 0x07ff07ff,		/* src_mask */
-	 0x07ff07ff,		/* dst_mask */
+	 0x07ff2fff,		/* src_mask */
+	 0x07ff2fff,		/* dst_mask */
 	 TRUE),			/* pcrel_offset */
 
   HOWTO (R_ARM_THM_PC8,	        /* type */
@@ -293,7 +293,7 @@ static reloc_howto_type elf32_arm_howto_table_1[] =
   HOWTO (R_ARM_XPC25,		/* type */
 	 2,			/* rightshift */
 	 2,			/* size (0 = byte, 1 = short, 2 = long) */
-	 25,			/* bitsize */
+	 24,			/* bitsize */
 	 TRUE,			/* pc_relative */
 	 0,			/* bitpos */
 	 complain_overflow_signed,/* complain_on_overflow */
@@ -308,15 +308,15 @@ static reloc_howto_type elf32_arm_howto_table_1[] =
   HOWTO (R_ARM_THM_XPC22,	/* type */
 	 2,			/* rightshift */
 	 2,			/* size (0 = byte, 1 = short, 2 = long) */
-	 22,			/* bitsize */
+	 24,			/* bitsize */
 	 TRUE,			/* pc_relative */
 	 0,			/* bitpos */
 	 complain_overflow_signed,/* complain_on_overflow */
 	 bfd_elf_generic_reloc,	/* special_function */
 	 "R_ARM_THM_XPC22",	/* name */
 	 FALSE,			/* partial_inplace */
-	 0x07ff07ff,		/* src_mask */
-	 0x07ff07ff,		/* dst_mask */
+	 0x07ff2fff,		/* src_mask */
+	 0x07ff2fff,		/* dst_mask */
 	 TRUE),			/* pcrel_offset */
 
   /* Dynamic TLS relocations.  */
@@ -2776,6 +2776,9 @@ struct elf32_arm_link_hash_table
   /* Whether we should fix the Cortex-A8 Thumb-2 branch/TLB erratum.  */
   int fix_cortex_a8;
 
+  /* Whether we should fix the ARM1176 BLX immediate issue.  */
+  int fix_arm1176;
+
   /* Nonzero if the ARM/Thumb BLX instructions are available for use.  */
   int use_blx;
 
@@ -3315,6 +3318,7 @@ elf32_arm_link_hash_table_create (bfd *abfd)
   ret->vfp11_erratum_glue_size = 0;
   ret->num_vfp11_fixes = 0;
   ret->fix_cortex_a8 = 0;
+  ret->fix_arm1176 = 0;
   ret->bfd_of_glue_owner = NULL;
   ret->byteswap_code = 0;
   ret->target1_is_rel = 0;
@@ -3427,6 +3431,7 @@ arm_stub_is_thumb (enum elf32_arm_stub_type stub_type)
     case arm_stub_long_branch_v4t_thumb_arm:
     case arm_stub_short_branch_v4t_thumb_arm:
     case arm_stub_long_branch_v4t_thumb_arm_pic:
+    case arm_stub_long_branch_v4t_thumb_tls_pic:
     case arm_stub_long_branch_thumb_only_pic:
       return TRUE;
     case arm_stub_none:
@@ -4556,6 +4561,7 @@ cortex_a8_erratum_scan (bfd *input_bfd,
                   bfd_vma target;
                   enum elf32_arm_stub_type stub_type = arm_stub_none;
                   struct a8_erratum_reloc key, *found;
+                  bfd_boolean use_plt = FALSE;
 
                   key.from = base_vma + i;
                   found = (struct a8_erratum_reloc *)
@@ -4567,7 +4573,6 @@ cortex_a8_erratum_scan (bfd *input_bfd,
 		    {
 		      char *error_message = NULL;
 		      struct elf_link_hash_entry *entry;
-		      bfd_boolean use_plt = FALSE;
 
 		      /* We don't care about the error returned from this
 		         function, only if there is glue or not.  */
@@ -4670,6 +4675,12 @@ cortex_a8_erratum_scan (bfd *input_bfd,
                       if (found)
                         offset =
 			  (bfd_signed_vma) (found->destination - pc_for_insn);
+
+                      /* If the stub will use a Thumb-mode branch to a
+                         PLT target, redirect it to the preceding Thumb
+                         entry point.  */
+                      if (stub_type != arm_stub_a8_veneer_blx && use_plt)
+                        offset -= PLT_THUMB_STUB_SIZE;
 
                       target = pc_for_insn + offset;
 
@@ -5923,9 +5934,21 @@ bfd_elf32_arm_get_bfd_for_interworking (bfd *abfd, struct bfd_link_info *info)
 static void
 check_use_blx (struct elf32_arm_link_hash_table *globals)
 {
-  if (bfd_elf_get_obj_attr_int (globals->obfd, OBJ_ATTR_PROC,
-				Tag_CPU_arch) > 2)
-    globals->use_blx = 1;
+  int cpu_arch;
+
+  cpu_arch = bfd_elf_get_obj_attr_int (globals->obfd, OBJ_ATTR_PROC, 
+				       Tag_CPU_arch);
+
+  if (globals->fix_arm1176)
+    {
+      if (cpu_arch == TAG_CPU_ARCH_V6T2 || cpu_arch > TAG_CPU_ARCH_V6K)
+	globals->use_blx = 1;
+    }
+  else
+    {
+      if (cpu_arch > TAG_CPU_ARCH_V4T)
+	globals->use_blx = 1;
+    }
 }
 
 bfd_boolean
@@ -6779,7 +6802,8 @@ bfd_elf32_arm_set_target_relocs (struct bfd *output_bfd,
 				 int use_blx,
                                  bfd_arm_vfp11_fix vfp11_fix,
 				 int no_enum_warn, int no_wchar_warn,
-				 int pic_veneer, int fix_cortex_a8)
+				 int pic_veneer, int fix_cortex_a8,
+				 int fix_arm1176)
 {
   struct elf32_arm_link_hash_table *globals;
 
@@ -6804,6 +6828,7 @@ bfd_elf32_arm_set_target_relocs (struct bfd *output_bfd,
   globals->vfp11_fix = vfp11_fix;
   globals->pic_veneer = pic_veneer;
   globals->fix_cortex_a8 = fix_cortex_a8;
+  globals->fix_arm1176 = fix_arm1176;
 
   BFD_ASSERT (is_arm_elf (output_bfd));
   elf_arm_tdata (output_bfd)->no_enum_size_warning = no_enum_warn;
@@ -8200,10 +8225,15 @@ elf32_arm_final_link_relocate (reloc_howto_type *           howto,
 							 sym_sec, h,
 							 rel, globals,
 							 stub_type);
-		  if (stub_entry != NULL)
-		    value = (stub_entry->stub_offset
-			     + stub_entry->stub_sec->output_offset
-			     + stub_entry->stub_sec->output_section->vma);
+		  {
+		    if (stub_entry != NULL)
+		      value = (stub_entry->stub_offset
+			       + stub_entry->stub_sec->output_offset
+			       + stub_entry->stub_sec->output_section->vma);
+
+		    if (plt_offset != (bfd_vma) -1)
+		      *unresolved_reloc_p = FALSE;
+		  }
 		}
 	      else
 		{
@@ -8297,7 +8327,7 @@ elf32_arm_final_link_relocate (reloc_howto_type *           howto,
 		     case, mode switching is performed by the stub.  */
 		  if (branch_type == ST_BRANCH_TO_THUMB && !stub_entry)
 		    value |= (1 << 28);
-		  else
+		  else if (stub_entry || branch_type != ST_BRANCH_UNKNOWN)
 		    {
 		      value &= ~(bfd_vma)(1 << 28);
 		      value |= (1 << 24);
@@ -8628,9 +8658,14 @@ elf32_arm_final_link_relocate (reloc_howto_type *           howto,
 						       rel, globals,
 						       stub_type);
 		if (stub_entry != NULL)
-		  value = (stub_entry->stub_offset
-			   + stub_entry->stub_sec->output_offset
-			   + stub_entry->stub_sec->output_section->vma);
+		  {
+		    value = (stub_entry->stub_offset
+			     + stub_entry->stub_sec->output_offset
+			     + stub_entry->stub_sec->output_section->vma);
+
+		    if (plt_offset != (bfd_vma) -1)
+		      *unresolved_reloc_p = FALSE;
+		  }
 
 		/* If this call becomes a call to Arm, force BLX.  */
 		if (globals->use_blx && (r_type == R_ARM_THM_CALL))
@@ -9298,6 +9333,9 @@ elf32_arm_final_link_relocate (reloc_howto_type *           howto,
 	    || ELF32_R_TYPE(rel->r_info) == R_ARM_THM_TLS_CALL)
 	  {
 	    bfd_signed_vma offset;
+	    /* TLS stubs are arm mode.  The original symbol is a
+	       data object, so branch_type is bogus.  */
+	    branch_type = ST_BRANCH_TO_ARM;
 	    enum elf32_arm_stub_type stub_type
 	      = arm_type_of_stub (info, input_section, rel,
 				  st_type, &branch_type,
@@ -9342,16 +9380,25 @@ elf32_arm_final_link_relocate (reloc_howto_type *           howto,
 			   input_section->output_offset
 			   + rel->r_offset + 4);
 	    
-		/* Round up the offset to a word boundary */
-		offset = (offset + 2) & ~2;
+		if (stub_type != arm_stub_none
+		    && arm_stub_is_thumb (stub_type))
+		  {
+		    lower_insn = 0xd000;
+		  }
+		else
+		  {
+		    lower_insn = 0xc000;
+		    /* Round up the offset to a word boundary */
+		    offset = (offset + 2) & ~2;
+		  }
+
 		neg = offset < 0;
 		upper_insn = (0xf000
 			      | ((offset >> 12) & 0x3ff)
 			      | (neg << 10));
-		lower_insn = (0xc000
-			      | (((!((offset >> 23) & 1)) ^ neg) << 13)
+		lower_insn |= (((!((offset >> 23) & 1)) ^ neg) << 13)
 			      | (((!((offset >> 22) & 1)) ^ neg) << 11)
-			      | ((offset >> 1) & 0x7ff));
+			      | ((offset >> 1) & 0x7ff);
 		bfd_put_16 (input_bfd, upper_insn, hit_data);
 		bfd_put_16 (input_bfd, lower_insn, hit_data + 2);
 		return bfd_reloc_ok;
@@ -9435,7 +9482,7 @@ elf32_arm_final_link_relocate (reloc_howto_type *           howto,
       }
 
     case R_ARM_TLS_LE32:
-      if (info->shared)
+      if (info->shared && !info->pie)
 	{
 	  (*_bfd_error_handler)
 	    (_("%B(%A+0x%lx): R_ARM_TLS_LE32 relocation not permitted in shared object"),
@@ -10214,7 +10261,7 @@ elf32_arm_relocate_section (bfd *                  output_bfd,
 		    - relocation;
 		  addend += msec->output_section->vma + msec->output_offset;
 
-		  /* Cases here must match those in the preceeding
+		  /* Cases here must match those in the preceding
 		     switch statement.  */
 		  switch (r_type)
 		    {
@@ -12019,7 +12066,7 @@ elf32_arm_gc_sweep_hook (bfd *                     abfd,
 	  struct elf_dyn_relocs *p;
 
 	  if (h != NULL)
-	    pp = &((struct elf32_arm_link_hash_entry *) h)->dyn_relocs;
+	    pp = &(eh->dyn_relocs);
 	  else
 	    {
 	      Elf_Internal_Sym *isym;
@@ -12032,7 +12079,7 @@ elf32_arm_gc_sweep_hook (bfd *                     abfd,
 	      if (pp == NULL)
 		return FALSE;
 	    }
-	  for (pp = &eh->dyn_relocs; (p = *pp) != NULL; pp = &p->next)
+	  for (; (p = *pp) != NULL; pp = &p->next)
 	    if (p->sec == sec)
 	      {
 		/* Everything must go for SEC.  */
@@ -12448,6 +12495,8 @@ elf32_arm_gc_mark_extra_sections (struct bfd_link_info *info,
   Elf_Internal_Shdr **elf_shdrp;
   bfd_boolean again;
 
+  _bfd_elf_gc_mark_extra_sections (info, gc_mark_hook);
+
   /* Marking EH data may cause additional code sections to be marked,
      requiring multiple passes.  */
   again = TRUE;
@@ -12767,12 +12816,6 @@ allocate_dynrelocs_for_symbol (struct elf_link_hash_entry *h, void * inf)
 
   if (h->root.type == bfd_link_hash_indirect)
     return TRUE;
-
-  if (h->root.type == bfd_link_hash_warning)
-    /* When warning symbols are created, they **replace** the "real"
-       entry in the hash table, thus we never get to see the real
-       symbol in a hash traversal.  So look at it now.  */
-    h = (struct elf_link_hash_entry *) h->root.u.i.link;
 
   eh = (struct elf32_arm_link_hash_entry *) h;
 
@@ -13136,9 +13179,6 @@ elf32_arm_readonly_dynrelocs (struct elf_link_hash_entry * h, void * inf)
 {
   struct elf32_arm_link_hash_entry * eh;
   struct elf_dyn_relocs * p;
-
-  if (h->root.type == bfd_link_hash_warning)
-    h = (struct elf_link_hash_entry *) h->root.u.i.link;
 
   eh = (struct elf32_arm_link_hash_entry *) h;
   for (p = eh->dyn_relocs; p != NULL; p = p->next)
@@ -13725,6 +13765,10 @@ elf32_arm_finish_dynamic_sections (bfd * output_bfd, struct bfd_link_info * info
   dynobj = elf_hash_table (info)->dynobj;
 
   sgot = htab->root.sgotplt;
+  /* A broken linker script might have discarded the dynamic sections.
+     Catch this here so that we do not seg-fault later on.  */
+  if (sgot != NULL && bfd_is_abs_section (sgot->output_section))
+    return FALSE;
   sdyn = bfd_get_section_by_name (dynobj, ".dynamic");
 
   if (elf_hash_table (info)->dynamic_sections_created)
@@ -14083,17 +14127,6 @@ elf32_arm_reloc_type_class (const Elf_Internal_Rela *rela)
     default:
       return reloc_class_normal;
     }
-}
-
-/* Set the right machine number for an Arm ELF file.  */
-
-static bfd_boolean
-elf32_arm_section_flags (flagword *flags, const Elf_Internal_Shdr *hdr)
-{
-  if (hdr->sh_type == SHT_NOTE)
-    *flags |= SEC_LINK_ONCE | SEC_LINK_DUPLICATES_SAME_CONTENTS;
-
-  return TRUE;
 }
 
 static void
@@ -14483,7 +14516,8 @@ elf32_arm_output_arch_local_syms (bfd *output_bfd,
 		   == SEC_HAS_CONTENTS
 		&& get_arm_elf_section_data (osi.sec) != NULL
 		&& get_arm_elf_section_data (osi.sec)->mapcount == 0
-		&& osi.sec->size > 0)
+		&& osi.sec->size > 0
+		&& (osi.sec->flags & SEC_EXCLUDE) == 0)
 	      {
 		osi.sec_shndx = _bfd_elf_section_from_bfd_section
 		  (output_bfd, osi.sec->output_section);
@@ -15112,12 +15146,16 @@ elf32_arm_swap_symbol_in (bfd * abfd,
 
   /* New EABI objects mark thumb function symbols by setting the low bit of
      the address.  */
-  if ((ELF_ST_TYPE (dst->st_info) == STT_FUNC
-       || ELF_ST_TYPE (dst->st_info) == STT_GNU_IFUNC)
-      && (dst->st_value & 1))
+  if (ELF_ST_TYPE (dst->st_info) == STT_FUNC
+      || ELF_ST_TYPE (dst->st_info) == STT_GNU_IFUNC)
     {
-      dst->st_value &= ~(bfd_vma) 1;
-      dst->st_target_internal = ST_BRANCH_TO_THUMB;
+      if (dst->st_value & 1)
+	{
+	  dst->st_value &= ~(bfd_vma) 1;
+	  dst->st_target_internal = ST_BRANCH_TO_THUMB;
+	}
+      else
+	dst->st_target_internal = ST_BRANCH_TO_ARM;
     }
   else if (ELF_ST_TYPE (dst->st_info) == STT_ARM_TFUNC)
     {
@@ -15127,7 +15165,7 @@ elf32_arm_swap_symbol_in (bfd * abfd,
   else if (ELF_ST_TYPE (dst->st_info) == STT_SECTION)
     dst->st_target_internal = ST_BRANCH_LONG;
   else
-    dst->st_target_internal = ST_BRANCH_TO_ARM;
+    dst->st_target_internal = ST_BRANCH_UNKNOWN;
 
   return TRUE;
 }
@@ -15317,7 +15355,6 @@ const struct elf_size_info elf32_arm_size_info =
 #define elf_backend_post_process_headers	elf32_arm_post_process_headers
 #define elf_backend_reloc_type_class		elf32_arm_reloc_type_class
 #define elf_backend_object_p			elf32_arm_object_p
-#define elf_backend_section_flags		elf32_arm_section_flags
 #define elf_backend_fake_sections  		elf32_arm_fake_sections
 #define elf_backend_section_from_shdr  		elf32_arm_section_from_shdr
 #define elf_backend_final_write_processing      elf32_arm_final_write_processing
@@ -15425,7 +15462,7 @@ elf32_arm_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
   bfd_boolean flags_compatible = TRUE;
   asection *sec;
 
-  /* Check if we have the same endianess.  */
+  /* Check if we have the same endianness.  */
   if (! _bfd_generic_verify_endian_match (ibfd, obfd))
     return FALSE;
 

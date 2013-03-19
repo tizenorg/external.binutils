@@ -237,6 +237,9 @@ walk_wild_consider_section (lang_wild_statement_type *ptr,
 {
   struct name_list *list_tmp;
 
+  /* Propagate the section_flag_info from the wild statement to the section.  */
+  s->section_flag_info = ptr->section_flag_list;
+
   /* Don't process sections from files which were excluded.  */
   for (list_tmp = sec->spec.exclude_name_list;
        list_tmp;
@@ -1130,6 +1133,7 @@ new_afile (const char *name,
 #ifdef ENABLE_PLUGINS
   p->claimed = FALSE;
   p->claim_archive = FALSE;
+  p->reload = FALSE;
 #endif /* ENABLE_PLUGINS */
 
   lang_statement_append (&input_file_chain,
@@ -1579,8 +1583,14 @@ lang_output_section_find_by_flags (const asection *sec,
 	    }
 	  flags ^= sec->flags;
 	  if (!(flags & (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD
-			 | SEC_READONLY))
-	      && !(look->flags & (SEC_SMALL_DATA | SEC_THREAD_LOCAL)))
+			 | SEC_READONLY | SEC_SMALL_DATA))
+	      || (!(flags & (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD
+			     | SEC_READONLY))
+		  && !(look->flags & SEC_SMALL_DATA))
+	      || (!(flags & (SEC_THREAD_LOCAL | SEC_ALLOC))
+		  && (look->flags & SEC_THREAD_LOCAL)
+		  && (!(flags & SEC_LOAD)
+		      || (look->flags & SEC_LOAD))))
 	    found = look;
 	}
     }
@@ -2094,9 +2104,6 @@ static bfd_boolean
 sort_def_symbol (struct bfd_link_hash_entry *hash_entry,
 		 void *info ATTRIBUTE_UNUSED)
 {
-  if (hash_entry->type == bfd_link_hash_warning)
-    hash_entry = (struct bfd_link_hash_entry *) hash_entry->u.i.link;
-
   if (hash_entry->type == bfd_link_hash_defined
       || hash_entry->type == bfd_link_hash_defweak)
     {
@@ -2253,8 +2260,11 @@ lang_add_section (lang_statement_list_type *ptr,
 		  lang_output_section_statement_type *output)
 {
   flagword flags = section->flags;
+  struct flag_info *sflag_info = section->section_flag_info;
+
   bfd_boolean discard;
   lang_input_section_type *new_section;
+  bfd *abfd = link_info.output_bfd;
 
   /* Discard sections marked with SEC_EXCLUDE.  */
   discard = (flags & SEC_EXCLUDE) != 0;
@@ -2278,6 +2288,28 @@ lang_add_section (lang_statement_list_type *ptr,
 	  section->output_section = bfd_abs_section_ptr;
 	}
       return;
+    }
+
+  if (sflag_info)
+    {
+      if (sflag_info->flags_initialized == FALSE)
+	bfd_lookup_section_flags (&link_info, sflag_info);
+
+      if (sflag_info->only_with_flags != 0
+	  && sflag_info->not_with_flags != 0
+          && ((sflag_info->not_with_flags & flags) != 0
+	       || (sflag_info->only_with_flags & flags)
+                   != sflag_info->only_with_flags))
+	return;
+
+      if (sflag_info->only_with_flags != 0
+	  && (sflag_info->only_with_flags & flags)
+              != sflag_info->only_with_flags)
+	return;
+
+      if (sflag_info->not_with_flags != 0
+          && (sflag_info->not_with_flags & flags) != 0)
+	return;
     }
 
   if (section->output_section != NULL)
@@ -2749,7 +2781,10 @@ load_symbols (lang_input_statement_type *entry,
       break;
 
     case bfd_object:
-      ldlang_add_file (entry);
+#ifdef ENABLE_PLUGINS
+      if (!entry->reload)
+#endif
+	ldlang_add_file (entry);
       if (trace_files || trace_file_tries)
 	info_msg ("%I\n", entry);
       break;
@@ -3016,7 +3051,7 @@ lang_get_output_target (void)
 
   /* No - has the current target been set to something other than
      the default?  */
-  if (current_target != default_target)
+  if (current_target != default_target && current_target != NULL)
     return current_target;
 
   /* No - can we determine the format of the first input file?  */
@@ -3241,6 +3276,19 @@ open_input_bfds (lang_statement_union_type *s, enum open_bfd_mode mode)
 		  && bfd_check_format (s->input_statement.the_bfd,
 				       bfd_archive))
 		s->input_statement.loaded = FALSE;
+#ifdef ENABLE_PLUGINS
+	      /* When rescanning, reload --as-needed shared libs.  */
+	      else if ((mode & OPEN_BFD_RESCAN) != 0
+		       && plugin_insert == NULL
+		       && s->input_statement.loaded
+		       && s->input_statement.add_DT_NEEDED_for_regular
+		       && ((s->input_statement.the_bfd->flags) & DYNAMIC) != 0
+		       && plugin_should_reload (s->input_statement.the_bfd))
+		{
+		  s->input_statement.loaded = FALSE;
+		  s->input_statement.reload = TRUE;
+		}
+#endif
 
 	      os_tail = lang_output_section_statement.tail;
 	      lang_list_init (&add);
@@ -4048,9 +4096,8 @@ print_assignment (lang_assignment_statement_type *assignment,
 	  if (h)
 	    {
 	      value = h->u.def.value;
-
-	      if (expld.result.section != NULL)
-		value += expld.result.section->vma;
+	      value += h->u.def.section->output_section->vma;
+	      value += h->u.def.section->output_offset;
 
 	      minfo ("[0x%V]", value);
 	    }
@@ -5606,8 +5653,9 @@ lang_do_assignments_1 (lang_statement_union_type *s,
 }
 
 void
-lang_do_assignments (void)
+lang_do_assignments (lang_phase_type phase)
 {
+  expld.phase = phase;
   lang_statement_iteration++;
   lang_do_assignments_1 (statement_list.head, abs_output_section, NULL, 0);
 }
@@ -6403,7 +6451,7 @@ lang_relax_sections (bfd_boolean need_layout)
 
 	      /* Do all the assignments with our current guesses as to
 		 section sizes.  */
-	      lang_do_assignments ();
+	      lang_do_assignments (lang_assigning_phase_enum);
 
 	      /* We must do this after lang_do_assignments, because it uses
 		 size.  */
@@ -6424,7 +6472,7 @@ lang_relax_sections (bfd_boolean need_layout)
   if (need_layout)
     {
       /* Final extra sizing to report errors.  */
-      lang_do_assignments ();
+      lang_do_assignments (lang_assigning_phase_enum);
       lang_reset_memory_regions ();
       lang_size_sections (NULL, TRUE);
     }
@@ -6541,6 +6589,7 @@ lang_process (void)
 	einfo (_("%P%F: %s: plugin reported error after all symbols read\n"),
 	       plugin_error_plugin ());
       /* Open any newly added files, updating the file chains.  */
+      link_info.loading_lto_outputs = TRUE;
       open_input_bfds (added.head, OPEN_BFD_NORMAL);
       /* Restore the global list pointer now they have all been added.  */
       lang_list_remove_tail (stat_ptr, &added);
@@ -6666,8 +6715,7 @@ lang_process (void)
 
   /* Do all the assignments, now that we know the final resting places
      of all the symbols.  */
-  expld.phase = lang_final_phase_enum;
-  lang_do_assignments ();
+  lang_do_assignments (lang_final_phase_enum);
 
   ldemul_finish ();
 
@@ -6711,10 +6759,12 @@ lang_add_wild (struct wildcard_spec *filespec,
   new_stmt = new_stat (lang_wild_statement, stat_ptr);
   new_stmt->filename = NULL;
   new_stmt->filenames_sorted = FALSE;
+  new_stmt->section_flag_list = NULL;
   if (filespec != NULL)
     {
       new_stmt->filename = filespec->name;
       new_stmt->filenames_sorted = filespec->sorted == by_name;
+      new_stmt->section_flag_list = filespec->section_flag_list;
     }
   new_stmt->section_list = section_list;
   new_stmt->keep_sections = keep_sections;
@@ -6912,11 +6962,13 @@ lang_leave_output_section_statement (fill_type *fill, const char *memspec,
 		    current_section->load_base != NULL,
 		    current_section->addr_tree != NULL);
 
-  /* If this section has no load region or base, but has the same
+  /* If this section has no load region or base, but uses the same
      region as the previous section, then propagate the previous
      section's load region.  */
 
-  if (!current_section->lma_region && !current_section->load_base
+  if (current_section->lma_region == NULL
+      && current_section->load_base == NULL
+      && current_section->addr_tree == NULL
       && current_section->region == current_section->prev->region)
     current_section->lma_region = current_section->prev->lma_region;
 
@@ -7423,10 +7475,6 @@ lang_leave_overlay (etree_type *lma_expr,
 
 /* Version handling.  This is only useful for ELF.  */
 
-/* This global variable holds the version tree that we build.  */
-
-struct bfd_elf_version_tree *lang_elf_version_info;
-
 /* If PREV is NULL, return first version pattern matching particular symbol.
    If PREV is non-NULL, return first version pattern matching particular
    symbol after PREV (previously returned by lang_vers_match).  */
@@ -7768,8 +7816,8 @@ lang_register_vers_node (const char *name,
   if (name == NULL)
     name = "";
 
-  if ((name[0] == '\0' && lang_elf_version_info != NULL)
-      || (lang_elf_version_info && lang_elf_version_info->name[0] == '\0'))
+  if (link_info.version_info != NULL
+      && (name[0] == '\0' || link_info.version_info->name[0] == '\0'))
     {
       einfo (_("%X%P: anonymous version tag cannot be combined"
 	       " with other version tags\n"));
@@ -7778,7 +7826,7 @@ lang_register_vers_node (const char *name,
     }
 
   /* Make sure this node has a unique name.  */
-  for (t = lang_elf_version_info; t != NULL; t = t->next)
+  for (t = link_info.version_info; t != NULL; t = t->next)
     if (strcmp (t->name, name) == 0)
       einfo (_("%X%P: duplicate version tag `%s'\n"), name);
 
@@ -7790,7 +7838,7 @@ lang_register_vers_node (const char *name,
 
   for (e1 = version->globals.list; e1 != NULL; e1 = e1->next)
     {
-      for (t = lang_elf_version_info; t != NULL; t = t->next)
+      for (t = link_info.version_info; t != NULL; t = t->next)
 	{
 	  struct bfd_elf_version_expr *e2;
 
@@ -7817,7 +7865,7 @@ lang_register_vers_node (const char *name,
 
   for (e1 = version->locals.list; e1 != NULL; e1 = e1->next)
     {
-      for (t = lang_elf_version_info; t != NULL; t = t->next)
+      for (t = link_info.version_info; t != NULL; t = t->next)
 	{
 	  struct bfd_elf_version_expr *e2;
 
@@ -7853,7 +7901,7 @@ lang_register_vers_node (const char *name,
   else
     version->vernum = 0;
 
-  for (pp = &lang_elf_version_info; *pp != NULL; pp = &(*pp)->next)
+  for (pp = &link_info.version_info; *pp != NULL; pp = &(*pp)->next)
     ;
   *pp = version;
 }
@@ -7869,7 +7917,7 @@ lang_add_vers_depend (struct bfd_elf_version_deps *list, const char *name)
   ret = (struct bfd_elf_version_deps *) xmalloc (sizeof *ret);
   ret->next = list;
 
-  for (t = lang_elf_version_info; t != NULL; t = t->next)
+  for (t = link_info.version_info; t != NULL; t = t->next)
     {
       if (strcmp (t->name, name) == 0)
 	{

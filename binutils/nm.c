@@ -436,6 +436,8 @@ filter_symbols (bfd *abfd, bfd_boolean is_dynamic, void *minisyms,
       else if (external_only)
 	keep = ((sym->flags & BSF_GLOBAL) != 0
 		|| (sym->flags & BSF_WEAK) != 0
+		/* PR binutls/12753: Unique symbols are global too.  */
+		|| (sym->flags & BSF_GNU_UNIQUE) != 0
 		|| bfd_is_und_section (sym->section)
 		|| bfd_is_com_section (sym->section));
       else
@@ -1199,6 +1201,10 @@ display_file (char *filename)
       bfd_nonfatal (filename);
       return FALSE;
     }
+
+  /* If printing line numbers, decompress the debug sections.  */
+  if (line_numbers)
+    file->flags |= BFD_DECOMPRESS;
 
   if (bfd_check_format (file, bfd_archive))
     {

@@ -2,7 +2,7 @@
 
 NAME=binutils
 SPECNAME=${NAME}.spec
-ARCHES="armv5tel armv7l armv7hl armv7nhl"
+ARCHES="armv5tel armv6l armv7l armv7hl armv7nhl mipsel"
 TOBASELIBS=""
 TOBASELIBS_ARCH=""
 
@@ -34,6 +34,7 @@ cat >> baselibs.conf << EOF
 
   targettype ${i} autoreqprov off
   targettype ${i} provides "cross-arm-binutils-accel"
+  targettype ${i} requires "cross-arm-gcc-accel"
   targettype ${i} requires "glibc-x86-arm"
   targettype ${i} requires "zlib-x86-arm"
   targettype ${i} requires "binutils"
@@ -46,16 +47,18 @@ cat >> baselibs.conf << EOF
 
 
 
-  targettype ${i} post " for bin in addr2line ar as c++filt gprov ld nm objcopy objdump ranlib readelf size strings strip ; do"
+  targettype ${i} post " for bin in addr2line ar as c++filt gprov ld ld.bfd nm objcopy objdump ranlib readelf size strings strip ; do"
   targettype ${i} post "   binary="/usr/bin/\${bin}" "
-  targettype ${i} post "   if test -e \${binary} -a ! -e \${binary}.orig-arm ; then"
-  targettype ${i} post "     mv \${binary} \${binary}.orig-arm && ln -s <prefix>\${binary} \${binary}"
-  targettype ${i} post "   else "
+  targettype ${i} post "   if test -L \${binary} -a -e \${binary}.orig-arm ; then"
   targettype ${i} post "     echo "\${binary} not installed or \${binary}.orig-arm already present !" "
+  targettype ${i} post "   else "
+  targettype ${i} post "     mv \${binary} \${binary}.orig-arm && ln -s <prefix>\${binary} \${binary}"
   targettype ${i} post "   fi "
   targettype ${i} post " done "
+  targettype ${i} post " ln -sf /usr/bin/ld /usr/libexec/gcc/${i}-tizen-linux-gnueabi/4.5.3/ld"
+  targettype ${i} post " ln -sf /usr/bin/ld.bfd /usr/libexec/gcc/${i}-tizen-linux-gnueabi/4.5.3/ld.bfd"
 
-  targettype ${i} preun " for bin in addr2line ar as c++filt gprov ld nm objcopy objdump ranlib readelf size strings strip ; do"
+  targettype ${i} preun " for bin in addr2line ar as c++filt gprov ld ld.bfd nm objcopy objdump ranlib readelf size strings strip ; do"
   targettype ${i} preun "   binary="/usr/bin/\${bin}" "
   targettype ${i} preun "   if test -e \${binary}.orig-arm ; then"
   targettype ${i} preun "     rm \${binary} && mv \${binary}.orig-arm \${binary}"
@@ -63,6 +66,8 @@ cat >> baselibs.conf << EOF
   targettype ${i} preun "     echo "\${binary}.orig-arm not present !" "
   targettype ${i} preun "   fi "
   targettype ${i} preun " done "
+  targettype ${i} preun " rm -f /usr/libexec/gcc/${i}-tizen-linux-gnueabi/4.5.3/ld"
+  targettype ${i} preun " rm -f /usr/libexec/gcc/${i}-tizen-linux-gnueabi/4.5.3/ld.bfd"
 
 EOF
 

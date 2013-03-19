@@ -23,11 +23,9 @@
 /* #define DEBUG_SYMS / * to debug symbol list maintenance.  */
 
 #include "as.h"
-
 #include "safe-ctype.h"
 #include "obstack.h"		/* For "symbols.h" */
 #include "subsegs.h"
-
 #include "struc-symbol.h"
 
 /* This is non-zero if symbols are case sensitive, which is the
@@ -58,6 +56,10 @@ symbolS dot_symbol;
 
 #define DOLLAR_LABEL_CHAR	'\001'
 #define LOCAL_LABEL_CHAR	'\002'
+
+#ifndef TC_LABEL_IS_LOCAL
+#define TC_LABEL_IS_LOCAL(name)	0
+#endif
 
 struct obstack notes;
 #ifdef TE_PE
@@ -187,7 +189,7 @@ static unsigned long local_symbol_conversion_count;
 
 /* Create a local symbol and insert it into the local hash table.  */
 
-static struct local_symbol *
+struct local_symbol *
 local_symbol_make (const char *name, segT section, valueT val, fragS *frag)
 {
   char *name_copy;
@@ -250,9 +252,6 @@ static void
 define_sym_at_dot (symbolS *symbolP)
 {
   symbolP->sy_frag = frag_now;
-#ifdef OBJ_VMS
-  S_SET_OTHER (symbolP, const_flag);
-#endif
   S_SET_VALUE (symbolP, (valueT) frag_now_fix ());
   S_SET_SEGMENT (symbolP, now_seg);
 }
@@ -447,9 +446,6 @@ colon (/* Just seen "x:" - rattle symbols & frags.  */
     {
       symbolP = symbol_new (sym_name, now_seg, (valueT) frag_now_fix (),
 			    frag_now);
-#ifdef OBJ_VMS
-      S_SET_OTHER (symbolP, const_flag);
-#endif /* OBJ_VMS */
 
       symbol_table_insert (symbolP);
     }
@@ -2126,6 +2122,7 @@ S_IS_LOCAL (symbolS *s)
 	  && ! S_IS_DEBUG (s)
 	  && (strchr (name, DOLLAR_LABEL_CHAR)
 	      || strchr (name, LOCAL_LABEL_CHAR)
+	      || TC_LABEL_IS_LOCAL (name)
 	      || (! flag_keep_locals
 		  && (bfd_is_local_label (stdoutput, s->bsym)
 		      || (flag_mri
@@ -2137,6 +2134,16 @@ int
 S_IS_STABD (symbolS *s)
 {
   return S_GET_NAME (s) == 0;
+}
+
+int
+S_CAN_BE_REDEFINED (const symbolS *s)
+{
+  if (LOCAL_SYMBOL_CHECK (s))
+    return (local_symbol_get_frag ((struct local_symbol *) s)
+	    == &predefined_address_frag);
+  /* Permit register names to be redefined.  */
+  return s->bsym->section == reg_section;
 }
 
 int

@@ -6,44 +6,36 @@
 
 Summary: A GNU collection of binary utilities
 Name: cross-armv7hl-binutils-accel
-Version: 2.21.51.20110421
-Release: 5
+Version: 2.22
+Release: 1.21.Mer
 License: GPLv3+
 Group: Development/Tools
 URL: http://sources.redhat.com/binutils
-Source: ftp://ftp.kernel.org/pub/linux/devel/binutils/binutils-%{version}.tar.gz
+Source: ftp://ftp.kernel.org/pub/linux/devel/binutils/binutils-%{version}.tar.bz2
 Source2: binutils-2.19.50.0.1-output-format.sed
 Source100: baselibs.conf
 Source200: precheckin.sh
 Source201: README.PACKAGER
-Patch1: 001_ld_makefile_patch.patch
-Patch2: 006_better_file_error.patch
-Patch3: 012_check_ldrunpath_length.patch
-Patch4: 013_bash_in_ld_testsuite.patch
-Patch5: 127_x86_64_i386_biarch.patch
-Patch6: 128_build_id.patch
-Patch7: 129_ld_mulitarch_dirs.patch
-Patch8: 130_gold_disable_testsuite_build.patch
-Patch9: 131_ld_bootstrap_testsuite.patch
-Patch10: 134_gold_no_spu.patch
-Patch11: 135_bfd_version.patch
-Patch12: 140_pr10340.patch
-Patch13: 156_pr10144.patch
-Patch14: 157_ar_scripts_with_tilde.patch
-Patch15: 158_ld_system_root.patch
-Patch16: 159_gas-i8775.diff
-Patch17: 160_gas_pr12698.diff
-Patch18: 161_ar_delete_members.diff
-Patch19: 162_pr12730.diff
-Patch20: 162_ld_cortex_a8_erratum.diff
-Patch21: 163_pr12726.diff
-Patch22: 200_pr12715.diff
-Patch23: 201_pr12778.diff
-Patch24: Fix-gold-libopcode.patch
-Patch25: Disable-info.patch
+Patch01: binutils-2.20.51.0.2-libtool-lib64.patch
+Patch04: binutils-2.20.51.0.2-version.patch
+Patch05: binutils-2.20.51.0.2-set-long-long.patch
+Patch06: binutils-2.20.51.0.10-copy-osabi.patch
+Patch07: binutils-2.20.51.0.10-sec-merge-emit.patch
+Patch08: binutils-2.20.51.0.2-build-id.patch
+Patch09: binutils-2.22-branch-updates.patch
+Patch10: binutils-2.22-156-pr10144.patch
+Patch11: fixbug13534_1.patch
+Patch12: fixbug13534_2.patch
+Patch13: fixbug13534_3.patch
+Patch14: fixbug13534_4.patch
+Patch15: fixbug13534_5.patch
 
 %if "%{name}" != "binutils"
+%if "%{name}" != "cross-mipsel-binutils"
 %define binutils_target %(echo %{name} | sed -e "s/cross-\\(.*\\)-binutils/\\1/")-tizen-linux-gnueabi
+%else
+%define binutils_target %(echo %{name} | sed -e "s/cross-\\(.*\\)-binutils/\\1/")-tizen-linux-gnu
+%endif
 %define _prefix /opt/cross
 %define enable_shared 0
 %define isnative 0
@@ -51,7 +43,7 @@ Patch25: Disable-info.patch
 %define cross %{binutils_target}-
 # single target atm.
 ExclusiveArch: %ix86
-# special handling for ARM build acceleration
+# special handling for Tizen ARM build acceleration
 %if "%(echo %{name} | sed -e "s/cross-.*-binutils-\\(.*\\)/\\1/")" == "accel"
 %define binutils_target %(echo %{name} | sed -e "s/cross-\\(.*\\)-binutils-accel/\\1/")-tizen-linux-gnueabi
 %define _prefix /usr
@@ -62,17 +54,16 @@ AutoReqProv: 0
 %endif
 %endif
 
-#BuildRequires: gettext
-BuildRequires: flex
-BuildRequires: bison
-BuildRequires: zlib-devel
-BuildRequires: elfutils-libelf-devel
+BuildRequires: texinfo >= 4.0, gettext, flex, bison, zlib-devel
 # Required for: ld-bootstrap/bootstrap.exp bootstrap with --static
 # It should not be required for: ld-elf/elf.exp static {preinit,init,fini} array
 %if %{run_testsuite}
 BuildRequires: dejagnu, zlib-static, glibc-static, sharutils
 %endif
+BuildRequires: elfutils-libelf-devel
 Conflicts: gcc-c++ < 4.0.0
+Requires(post): /sbin/install-info
+Requires(preun): /sbin/install-info
 
 # On ARM EABI systems, we do want -gnueabi to be part of the
 # target triple.
@@ -97,6 +88,8 @@ converting addresses to file and line).
 Summary: BFD and opcodes static libraries and header files
 Group: System/Libraries
 Conflicts: binutils < 2.17.50.0.3-4
+Requires(post): /sbin/install-info
+Requires(preun): /sbin/install-info
 Requires: zlib-devel
 
 %description devel
@@ -107,32 +100,20 @@ to consider using libelf instead of BFD.
 
 %prep
 %setup -q -n binutils-%{version}
-%patch1 -p1
-%patch2 -p1
-%patch3 -p1
-%patch4 -p1
-%patch5 -p1
-%patch6 -p1
-%patch7 -p1
-%patch8 -p1
-%patch9 -p1
-%patch10 -p1
-%patch11 -p1
-%patch12 -p1
-%patch13 -p1
-%patch14 -p1
-%patch15 -p1
-%patch16 -p1
-%patch17 -p1
-%patch18 -p1
-%patch19 -p1
-%patch20 -p1
-%patch21 -p1
-%patch22 -p1
-%patch23 -p1
-%patch24 -p1
-%patch25 -p1
-
+%patch01 -p0 -b .libtool-lib64~
+# Causes build churn --cvm
+#%patch04 -p0 -b .version~
+%patch05 -p0 -b .set-long-long~
+%patch06 -p0 -b .copy-osabi~
+%patch07 -p0 -b .sec-merge-emit~
+%patch08 -p0 -b .build-id~
+%patch09 -p1 -b .branchupdates
+%patch10 -p1 -b .pr10144
+%patch11 -p1 -b .fixbug13534_1
+%patch12 -p1 -b .fixbug13534_2
+%patch13 -p1 -b .fixbug13534_3
+%patch14 -p1 -b .fixbug13534_4
+%patch15 -p1 -b .fixbug13534_5
 
 # We cannot run autotools as there is an exact requirement of autoconf-2.59.
 
@@ -196,13 +177,11 @@ export CFLAGS="$CFLAGS -Wl,-rpath,/emul/ia32-linux/usr/lib:/emul/ia32-linux/lib:
   --disable-shared \
 %endif
   $CARGS \
-  --enable-plugins \
   --disable-werror \
-  --enable-ld=default \
-  --disable-info \
-  --enable-gold
-
+  --enable-lto \
+  --with-bugurl=http://bugzilla.tizen.com
 make %{_smp_mflags} tooldir=%{_prefix} all
+make %{_smp_mflags} tooldir=%{_prefix} info
 
 # Do not use %%check as it is run after %%install where libbfd.so is rebuild
 # with -fvisibility=hidden no longer being usable in its shared form.
@@ -226,6 +205,7 @@ rm -f binutils-%{_target_platform}.tar.bz2 binutils-%{_target_platform}-*.{sum,l
 rm -rf %{buildroot}
 make install DESTDIR=%{buildroot}
 %if %{isnative}
+make prefix=%{buildroot}%{_prefix} infodir=%{buildroot}%{_infodir} install-info
 
 # Rebuild libiberty.a with -fPIC.
 # Future: Remove it together with its header file, projects should bundle it.
@@ -301,6 +281,8 @@ INPUT ( %{_libdir}/libopcodes.a -lbfd )
 EOH
 
 %else # !%{isnative}
+# For cross-binutils we drop the documentation.
+rm -rf %{buildroot}%{_infodir}
 # We keep these as one can have native + cross binutils of different versions.
 #rm -rf %{buildroot}%{_prefix}/share/locale
 #rm -rf %{buildroot}%{_mandir}
@@ -311,15 +293,57 @@ rm -rf %{buildroot}%{_prefix}/%{_lib}/libiberty.a
 rm -f %{buildroot}%{_infodir}/dir
 rm -rf %{buildroot}%{_prefix}/%{binutils_target}
 
-# As gas/README points out (search for --enable-targets),
-# multi-arch gas is not ready yet.
-rm -rf %{buildroot}%{_libdir}/ldscripts
+%find_lang %{?cross}binutils
+%find_lang %{?cross}opcodes
+%find_lang %{?cross}bfd
+%find_lang %{?cross}gas
+%find_lang %{?cross}ld
+%find_lang %{?cross}gprof
+cat %{?cross}opcodes.lang >> %{?cross}binutils.lang
+cat %{?cross}bfd.lang >> %{?cross}binutils.lang
+cat %{?cross}gas.lang >> %{?cross}binutils.lang
+cat %{?cross}ld.lang >> %{?cross}binutils.lang
+cat %{?cross}gprof.lang >> %{?cross}binutils.lang
 
+%clean
+rm -rf %{buildroot}
+
+%if %{isnative}
+%post
+/sbin/ldconfig
+%install_info --info-dir=%{_infodir} %{_infodir}/as.info
+%install_info --info-dir=%{_infodir} %{_infodir}/binutils.info
+%install_info --info-dir=%{_infodir} %{_infodir}/gprof.info
+%install_info --info-dir=%{_infodir} %{_infodir}/ld.info
+%install_info --info-dir=%{_infodir} %{_infodir}/standards.info
+%install_info --info-dir=%{_infodir} %{_infodir}/configure.info
+exit 0
+
+%preun
+if [ $1 = 0 ] ;then
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/as.info
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/binutils.info
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/gprof.info
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/ld.info
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/standards.info
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/configure.info
+fi
+exit 0
 
 %postun -p /sbin/ldconfig
 
-%files 
+%post devel
+%install_info --info-dir=%{_infodir} %{_infodir}/bfd.info
+
+%preun devel
+if [ $1 = 0 ] ;then
+  %install_info --delete --info-dir=%{_infodir} %{_infodir}/bfd.info
+fi
+%endif # %{isnative}
+
+%files -f %{?cross}binutils.lang
 %defattr(-,root,root,-)
+%doc README
 %{_prefix}/bin/*
 %{_mandir}/man1/*
 %if %{enable_shared}
@@ -328,6 +352,8 @@ rm -rf %{buildroot}%{_libdir}/ldscripts
 %exclude %{_prefix}/%{_lib}/libopcodes.so
 %endif
 %if %{isnative}
+%{_infodir}/[^b]*info*
+%{_infodir}/binutils*info*
 
 %files devel
 %defattr(-,root,root,-)
@@ -335,5 +361,60 @@ rm -rf %{buildroot}%{_libdir}/ldscripts
 %{_prefix}/%{_lib}/libbfd.so
 %{_prefix}/%{_lib}/libopcodes.so
 %{_prefix}/%{_lib}/lib*.a
+%{_infodir}/bfd*info*
 %endif # %{isnative}
 
+%changelog
+* Tue Feb  7 2012 Carsten Munk <carsten.munk@gmail.com> - 2.22
+- Pull some patches relevant to MIPS from branch update, and
+  fix for PR10144
+* Mon Dec 12 2011 Ray Donnelly <mingw.android@gmail.com> - 2.22
+- Updated to binutils 2.22
+* Tue Jun 28 2011 Junfeng Dong <junfeng.dong@intel.com> - 2.21.51.0.8
+- Add patch binutils-2.21.51.0.8-pr12778.patch to fix dbus failure on arm.
+* Tue May  3 2011 Junfeng Dong <junfeng.dong@intel.com> - 2.21.51.0.8
+- Update to latest version 2.21.51.0.8.
+- Clean unused patch files.
+- Drop binutils.spec.diff.
+* Sun Apr 24 2011 Jan-Simon Möller <jsmoeller@linuxfoundation.org> - 1.0
+- Add baselibs.conf to src.rpm
+* Thu Mar 10 2011 Junfeng Dong <junfeng.dong@intel.com> -2.21
+- Update to 2.21. The changes include:
+- Drop the following patch which have been merged into 2.21 already.
+  binutils-2.20.51.0.2-ifunc-ld-s.patch, binutils-2.20.51.0.2-lwp.patch
+  binutils-2.20.51.0.2-tag-div-use.patch
+- Drop binutils-2.20.51.0.2-build-id.patch because of the code evolvement.
+- Recreate binutils-2.20.51.0.2-libtool-lib64.patch for 2.21 and rename
+  the new patch as binutils-2.21-libtool-lib64.patch.
+* Fri Jan  7 2011 Carsten Munk <carsten@maemo.org> - 2.20.51.0.2
+- Add armv7hl, armv7nhl cross-binutils- packages. Part of fix for BMC#11463
+* Fri Dec 31 2010 Carsten Munk <carsten@maemo.org> - 2.20.51.0.2
+- Add support for Tag_MPextension_use and Tag_DIV_use. Fixes BMC#11431
+* Wed Dec 29 2010 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
+- Bugfixing:
+  BMC#10336 - Error when installing binutils with --excludedocs in .ks
+* Tue May 25 2010 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
+- enable LTO (link time optimization)
+* Mon May  3 2010 Jan-Simon Möller <jansimon.moeller@linuxfoundation.org> - 2.20.51.0.2
+- Add precheckin.sh, README.packager
+- add cross-binutils-* packages (cross-compiler)
+* Thu Mar  4 2010 Anas Nashif <anas.nashif@intel.com> - 2.20.51.0.2
+- Use %%{_target_platform} as the build target
+* Sat Dec 12 2009 Arjan van de Ven <arjan@linux.intel.com> - 2.20.51.0.2
+- add the LD_AS_NEEDED env variable back, and get us closer to upstream
+* Fri Nov 27 2009 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
+- Update to 2.20.51.0.2
+* Sat Aug 22 2009 Anas Nashif <anas.nashif@intel.com> - 2.19.51.0.14
+- Update to 2.19.51.0.14
+* Wed May  6 2009 Arjan van de Ven <arjan@linux.intel.com> 2.19
+- Add LD_AS_NEEDED environment variable
+* Tue Jan 13 2009 Anas Nashif <anas.nashif@intel.com> 2.19
+- Fixed source tag
+* Thu Jan  8 2009 Anas Nashif <anas.nashif@intel.com> 2.19
+- Update to 2.19
+* Tue Dec 16 2008 Anas Nashif <anas.nashif@intel.com> 2.18.50.0.6
+- Fixed rpmlint errors in Summary tag
+* Thu Dec 11 2008 Anas Nashif <anas.nashif@intel.com> 2.18.50.0.6
+- Do not check for ia64
+* Thu Sep 18 2008 Austin Zhang <austin.zhang@intel.com> 2.18.50.0.6
+- add check for the info file before installation

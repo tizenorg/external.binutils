@@ -1,6 +1,6 @@
 // arm.cc -- arm target support for gold.
 
-// Copyright 2009, 2010 Free Software Foundation, Inc.
+// Copyright 2009, 2010, 2011 Free Software Foundation, Inc.
 // Written by Doug Kwan <dougkwan@google.com> based on the i386 code
 // by Ian Lance Taylor <iant@google.com>.
 // This file also contains borrowed and adapted code from
@@ -1342,9 +1342,13 @@ class Arm_output_section : public Output_section
  public:
   typedef std::vector<std::pair<Relobj*, unsigned int> > Text_section_list;
 
+  // We need to force SHF_LINK_ORDER in a SHT_ARM_EXIDX section.
   Arm_output_section(const char* name, elfcpp::Elf_Word type,
 		     elfcpp::Elf_Xword flags)
-    : Output_section(name, type, flags)
+    : Output_section(name, type,
+		     (type == elfcpp::SHT_ARM_EXIDX
+		      ? flags | elfcpp::SHF_LINK_ORDER
+		      : flags))
   {
     if (type == elfcpp::SHT_ARM_EXIDX)
       this->set_always_keeps_input_sections();
@@ -1475,14 +1479,14 @@ class Arm_exidx_input_section
 // Arm_relobj class.
 
 template<bool big_endian>
-class Arm_relobj : public Sized_relobj<32, big_endian>
+class Arm_relobj : public Sized_relobj_file<32, big_endian>
 {
  public:
   static const Arm_address invalid_address = static_cast<Arm_address>(-1);
 
   Arm_relobj(const std::string& name, Input_file* input_file, off_t offset,
              const typename elfcpp::Ehdr<32, big_endian>& ehdr)
-    : Sized_relobj<32, big_endian>(name, input_file, offset, ehdr),
+    : Sized_relobj_file<32, big_endian>(name, input_file, offset, ehdr),
       stub_tables_(), local_symbol_is_thumb_function_(),
       attributes_section_data_(NULL), mapping_symbols_info_(),
       section_has_cortex_a8_workaround_(NULL), exidx_section_map_(),
@@ -1653,7 +1657,7 @@ class Arm_relobj : public Sized_relobj<32, big_endian>
   do_setup()
   {
     // Call parent's setup method.
-    Sized_relobj<32, big_endian>::do_setup();
+    Sized_relobj_file<32, big_endian>::do_setup();
 
     // Initialize look-up tables.
     Stub_table_list empty_stub_table_list(this->shnum(), NULL);
@@ -1666,9 +1670,10 @@ class Arm_relobj : public Sized_relobj<32, big_endian>
                          Stringpool_template<char>*);
 
   void
-  do_relocate_sections(const Symbol_table* symtab, const Layout* layout,
-		       const unsigned char* pshdrs, Output_file* of,
-		       typename Sized_relobj<32, big_endian>::Views* pivews);
+  do_relocate_sections(
+      const Symbol_table* symtab, const Layout* layout,
+      const unsigned char* pshdrs, Output_file* of,
+      typename Sized_relobj_file<32, big_endian>::Views* pivews);
 
   // Read the symbol information.
   void
@@ -1908,7 +1913,8 @@ class Arm_output_data_got : public Output_data_got<32, big_endian>
   // relocation that needs to be applied in a static link.
   void
   add_static_reloc(unsigned int got_offset, unsigned int r_type,
-		   Sized_relobj<32, big_endian>* relobj, unsigned int index)
+		   Sized_relobj_file<32, big_endian>* relobj,
+		   unsigned int index)
   {
     this->static_relocs_.push_back(Static_reloc(got_offset, r_type, relobj,
 						index));
@@ -1925,7 +1931,7 @@ class Arm_output_data_got : public Output_data_got<32, big_endian>
   // Same as the above but for a local symbol in OBJECT with INDEX.
   void
   add_tls_gd32_with_static_reloc(unsigned int got_type,
-				 Sized_relobj<32, big_endian>* object,
+				 Sized_relobj_file<32, big_endian>* object,
 				 unsigned int index);
 
  protected:
@@ -1944,7 +1950,7 @@ class Arm_output_data_got : public Output_data_got<32, big_endian>
     { this->u_.global.symbol = gsym; }
 
     Static_reloc(unsigned int got_offset, unsigned int r_type,
-	  Sized_relobj<32, big_endian>* relobj, unsigned int index)
+	  Sized_relobj_file<32, big_endian>* relobj, unsigned int index)
       : got_offset_(got_offset), r_type_(r_type), symbol_is_global_(false)
     {
       this->u_.local.relobj = relobj;
@@ -1975,7 +1981,7 @@ class Arm_output_data_got : public Output_data_got<32, big_endian>
     }
 
     // For a relocation against a local symbol, the defining object.
-    Sized_relobj<32, big_endian>*
+    Sized_relobj_file<32, big_endian>*
     relobj() const
     {
       gold_assert(!this->symbol_is_global_);
@@ -2008,7 +2014,7 @@ class Arm_output_data_got : public Output_data_got<32, big_endian>
       struct
       {
 	// For a local symbol, the object defining object.
-	Sized_relobj<32, big_endian>* relobj;
+	Sized_relobj_file<32, big_endian>* relobj;
 	// For a local symbol, the symbol index.
 	unsigned int index;
       } local;
@@ -2069,7 +2075,8 @@ class Arm_scan_relocatable_relocs :
 	  case elfcpp::R_ARM_TARGET1:
 	  case elfcpp::R_ARM_TARGET2:
 	    gold_unreachable();
-	  // Relocations that write full 32 bits.
+	  // Relocations that write full 32 bits and
+          // have alignment of 1.
 	  case elfcpp::R_ARM_ABS32:
 	  case elfcpp::R_ARM_REL32:
 	  case elfcpp::R_ARM_SBREL32:
@@ -2087,7 +2094,7 @@ class Arm_scan_relocatable_relocs :
 	  case elfcpp::R_ARM_TLS_LDO32:
 	  case elfcpp::R_ARM_TLS_IE32:
 	  case elfcpp::R_ARM_TLS_LE32:
-	    return Relocatable_relocs::RELOC_ADJUST_FOR_SECTION_4;
+	    return Relocatable_relocs::RELOC_ADJUST_FOR_SECTION_4_UNALIGNED;
 	  default:
 	    // For all other static relocations, return RELOC_SPECIAL.
 	    return Relocatable_relocs::RELOC_SPECIAL;
@@ -2171,38 +2178,11 @@ class Target_arm : public Sized_target<32, big_endian>
       copy_relocs_(elfcpp::R_ARM_COPY), dynbss_(NULL), 
       got_mod_index_offset_(-1U), tls_base_symbol_defined_(false),
       stub_tables_(), stub_factory_(Stub_factory::get_instance()),
-      may_use_blx_(false), should_force_pic_veneer_(false),
+      should_force_pic_veneer_(false),
       arm_input_section_map_(), attributes_section_data_(NULL),
       fix_cortex_a8_(false), cortex_a8_relocs_info_()
   { }
 
-  // Virtual function which is set to return true by a target if
-  // it can use relocation types to determine if a function's
-  // pointer is taken.
-  virtual bool
-  can_check_for_function_pointers() const
-  { return true; }
-
-  // Whether a section called SECTION_NAME may have function pointers to
-  // sections not eligible for safe ICF folding.
-  virtual bool
-  section_may_have_icf_unsafe_pointers(const char* section_name) const
-  {
-    return (!is_prefix_of(".ARM.exidx", section_name)
-	    && !is_prefix_of(".ARM.extab", section_name)
-	    && Target::section_may_have_icf_unsafe_pointers(section_name));
-  }
-  
-  // Whether we can use BLX.
-  bool
-  may_use_blx() const
-  { return this->may_use_blx_; }
-
-  // Set use-BLX flag.
-  void
-  set_may_use_blx(bool value)
-  { this->may_use_blx_ = value; }
-  
   // Whether we force PCI branch veneers.
   bool
   should_force_pic_veneer() const
@@ -2264,13 +2244,43 @@ class Target_arm : public Sized_target<32, big_endian>
 	    || arch == elfcpp::TAG_CPU_ARCH_V7
 	    || arch == elfcpp::TAG_CPU_ARCH_V7E_M);
   }
+
+  // Whether we have v4T interworking instructions available.
+  bool
+  may_use_v4t_interworking() const
+  {
+    Object_attribute* attr =
+      this->get_aeabi_object_attribute(elfcpp::Tag_CPU_arch);
+    int arch = attr->int_value();
+    return (arch != elfcpp::TAG_CPU_ARCH_PRE_V4
+	    && arch != elfcpp::TAG_CPU_ARCH_V4);
+  }
+  
+  // Whether we have v5T interworking instructions available.
+  bool
+  may_use_v5t_interworking() const
+  {
+    Object_attribute* attr =
+      this->get_aeabi_object_attribute(elfcpp::Tag_CPU_arch);
+    int arch = attr->int_value();
+    if (parameters->options().fix_arm1176())
+      return (arch == elfcpp::TAG_CPU_ARCH_V6T2
+	      || arch == elfcpp::TAG_CPU_ARCH_V7
+	      || arch == elfcpp::TAG_CPU_ARCH_V6_M
+	      || arch == elfcpp::TAG_CPU_ARCH_V6S_M
+	      || arch == elfcpp::TAG_CPU_ARCH_V7E_M);
+    else
+      return (arch != elfcpp::TAG_CPU_ARCH_PRE_V4
+	      && arch != elfcpp::TAG_CPU_ARCH_V4
+	      && arch != elfcpp::TAG_CPU_ARCH_V4T);
+  }
   
   // Process the relocations to determine unreferenced sections for 
   // garbage collection.
   void
   gc_process_relocs(Symbol_table* symtab,
 		    Layout* layout,
-		    Sized_relobj<32, big_endian>* object,
+		    Sized_relobj_file<32, big_endian>* object,
 		    unsigned int data_shndx,
 		    unsigned int sh_type,
 		    const unsigned char* prelocs,
@@ -2284,7 +2294,7 @@ class Target_arm : public Sized_target<32, big_endian>
   void
   scan_relocs(Symbol_table* symtab,
 	      Layout* layout,
-	      Sized_relobj<32, big_endian>* object,
+	      Sized_relobj_file<32, big_endian>* object,
 	      unsigned int data_shndx,
 	      unsigned int sh_type,
 	      const unsigned char* prelocs,
@@ -2320,7 +2330,7 @@ class Target_arm : public Sized_target<32, big_endian>
   void
   scan_relocatable_relocs(Symbol_table* symtab,
 			  Layout* layout,
-			  Sized_relobj<32, big_endian>* object,
+			  Sized_relobj_file<32, big_endian>* object,
 			  unsigned int data_shndx,
 			  unsigned int sh_type,
 			  const unsigned char* prelocs,
@@ -2547,6 +2557,23 @@ class Target_arm : public Sized_target<32, big_endian>
     arm_reloc_property_table = new Arm_reloc_property_table();
   }
 
+  // Virtual function which is set to return true by a target if
+  // it can use relocation types to determine if a function's
+  // pointer is taken.
+  virtual bool
+  do_can_check_for_function_pointers() const
+  { return true; }
+
+  // Whether a section called SECTION_NAME may have function pointers to
+  // sections not eligible for safe ICF folding.
+  virtual bool
+  do_section_may_have_icf_unsafe_pointers(const char* section_name) const
+  {
+    return (!is_prefix_of(".ARM.exidx", section_name)
+	    && !is_prefix_of(".ARM.extab", section_name)
+	    && Target::do_section_may_have_icf_unsafe_pointers(section_name));
+  }
+  
  private:
   // The class which scans relocations.
   class Scan
@@ -2561,7 +2588,7 @@ class Target_arm : public Sized_target<32, big_endian>
 
     inline void
     local(Symbol_table* symtab, Layout* layout, Target_arm* target,
-	  Sized_relobj<32, big_endian>* object,
+	  Sized_relobj_file<32, big_endian>* object,
 	  unsigned int data_shndx,
 	  Output_section* output_section,
 	  const elfcpp::Rel<32, big_endian>& reloc, unsigned int r_type,
@@ -2569,7 +2596,7 @@ class Target_arm : public Sized_target<32, big_endian>
 
     inline void
     global(Symbol_table* symtab, Layout* layout, Target_arm* target,
-	   Sized_relobj<32, big_endian>* object,
+	   Sized_relobj_file<32, big_endian>* object,
 	   unsigned int data_shndx,
 	   Output_section* output_section,
 	   const elfcpp::Rel<32, big_endian>& reloc, unsigned int r_type,
@@ -2577,7 +2604,7 @@ class Target_arm : public Sized_target<32, big_endian>
 
     inline bool
     local_reloc_may_be_function_pointer(Symbol_table* , Layout* , Target_arm* ,
-  	          			Sized_relobj<32, big_endian>* ,
+  	          			Sized_relobj_file<32, big_endian>* ,
         	  			unsigned int ,
   	          			Output_section* ,
 	          			const elfcpp::Rel<32, big_endian>& ,
@@ -2586,7 +2613,7 @@ class Target_arm : public Sized_target<32, big_endian>
 
     inline bool
     global_reloc_may_be_function_pointer(Symbol_table* , Layout* , Target_arm* ,
-  	           			 Sized_relobj<32, big_endian>* ,
+  	           			 Sized_relobj_file<32, big_endian>* ,
 	           			 unsigned int ,
 	           			 Output_section* ,
 	           			 const elfcpp::Rel<32, big_endian>& ,
@@ -2594,11 +2621,11 @@ class Target_arm : public Sized_target<32, big_endian>
 
    private:
     static void
-    unsupported_reloc_local(Sized_relobj<32, big_endian>*,
+    unsupported_reloc_local(Sized_relobj_file<32, big_endian>*,
 			    unsigned int r_type);
 
     static void
-    unsupported_reloc_global(Sized_relobj<32, big_endian>*,
+    unsupported_reloc_global(Sized_relobj_file<32, big_endian>*,
 			     unsigned int r_type, Symbol*);
 
     void
@@ -2740,7 +2767,7 @@ class Target_arm : public Sized_target<32, big_endian>
   // Create a GOT entry for the TLS module index.
   unsigned int
   got_mod_index_entry(Symbol_table* symtab, Layout* layout,
-		      Sized_relobj<32, big_endian>* object);
+		      Sized_relobj_file<32, big_endian>* object);
 
   // Get the PLT section.
   const Output_data_plt_arm<big_endian>*
@@ -2771,7 +2798,7 @@ class Target_arm : public Sized_target<32, big_endian>
   // Add a potential copy relocation.
   void
   copy_reloc(Symbol_table* symtab, Layout* layout,
-	     Sized_relobj<32, big_endian>* object,
+	     Sized_relobj_file<32, big_endian>* object,
 	     unsigned int shndx, Output_section* output_section,
 	     Symbol* sym, const elfcpp::Rel<32, big_endian>& reloc)
   {
@@ -2916,8 +2943,6 @@ class Target_arm : public Sized_target<32, big_endian>
   Stub_table_list stub_tables_;
   // Stub factory.
   const Stub_factory &stub_factory_;
-  // Whether we can use BLX.
-  bool may_use_blx_;
   // Whether we force PIC branch veneers.
   bool should_force_pic_veneer_;
   // Map for locating Arm_input_sections.
@@ -2940,6 +2965,7 @@ const Target::Target_info Target_arm<big_endian>::arm_info =
   false,		// has_resolve
   false,		// has_code_fill
   true,			// is_default_stack_executable
+  false,		// can_icf_inline_merge_sections
   '\0',			// wrap_char
   "/usr/lib/libc.so.1",	// dynamic_linker
   0x8000,		// default_text_segment_address
@@ -3204,15 +3230,14 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_ABS8: S + A
   static inline typename This::Status
   abs8(unsigned char* view,
-       const Sized_relobj<32, big_endian>* object,
+       const Sized_relobj_file<32, big_endian>* object,
        const Symbol_value<32>* psymval)
   {
     typedef typename elfcpp::Swap<8, big_endian>::Valtype Valtype;
-    typedef typename elfcpp::Swap<32, big_endian>::Valtype Reltype;
     Valtype* wv = reinterpret_cast<Valtype*>(view);
     Valtype val = elfcpp::Swap<8, big_endian>::readval(wv);
-    Reltype addend = utils::sign_extend<8>(val);
-    Reltype x = psymval->value(object, addend);
+    int32_t addend = utils::sign_extend<8>(val);
+    Arm_address x = psymval->value(object, addend);
     val = utils::bit_select(val, x, 0xffU);
     elfcpp::Swap<8, big_endian>::writeval(wv, val);
 
@@ -3226,7 +3251,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_ABS5: S + A
   static inline typename This::Status
   thm_abs5(unsigned char* view,
-       const Sized_relobj<32, big_endian>* object,
+       const Sized_relobj_file<32, big_endian>* object,
        const Symbol_value<32>* psymval)
   {
     typedef typename elfcpp::Swap<16, big_endian>::Valtype Valtype;
@@ -3248,7 +3273,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_ABS12: S + A
   static inline typename This::Status
   abs12(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval)
   {
     typedef typename elfcpp::Swap<32, big_endian>::Valtype Valtype;
@@ -3267,18 +3292,20 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_ABS16: S + A
   static inline typename This::Status
   abs16(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval)
   {
-    typedef typename elfcpp::Swap<16, big_endian>::Valtype Valtype;
+    typedef typename elfcpp::Swap_unaligned<16, big_endian>::Valtype Valtype;
     typedef typename elfcpp::Swap<32, big_endian>::Valtype Reltype;
-    Valtype* wv = reinterpret_cast<Valtype*>(view);
-    Valtype val = elfcpp::Swap<16, big_endian>::readval(wv);
-    Reltype addend = utils::sign_extend<16>(val);
-    Reltype x = psymval->value(object, addend);
+    Valtype val = elfcpp::Swap_unaligned<16, big_endian>::readval(view);
+    int32_t addend = utils::sign_extend<16>(val);
+    Arm_address x = psymval->value(object, addend);
     val = utils::bit_select(val, x, 0xffffU);
-    elfcpp::Swap<16, big_endian>::writeval(wv, val);
-    return (utils::has_signed_unsigned_overflow<16>(x)
+    elfcpp::Swap_unaligned<16, big_endian>::writeval(view, val);
+
+    // R_ARM_ABS16 permits signed or unsigned results.
+    int signed_x = static_cast<int32_t>(x);
+    return ((signed_x < -32768 || signed_x > 65536)
 	    ? This::STATUS_OVERFLOW
 	    : This::STATUS_OKAY);
   }
@@ -3286,31 +3313,29 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_ABS32: (S + A) | T
   static inline typename This::Status
   abs32(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval,
 	Arm_address thumb_bit)
   {
-    typedef typename elfcpp::Swap<32, big_endian>::Valtype Valtype;
-    Valtype* wv = reinterpret_cast<Valtype*>(view);
-    Valtype addend = elfcpp::Swap<32, big_endian>::readval(wv);
+    typedef typename elfcpp::Swap_unaligned<32, big_endian>::Valtype Valtype;
+    Valtype addend = elfcpp::Swap_unaligned<32, big_endian>::readval(view);
     Valtype x = psymval->value(object, addend) | thumb_bit;
-    elfcpp::Swap<32, big_endian>::writeval(wv, x);
+    elfcpp::Swap_unaligned<32, big_endian>::writeval(view, x);
     return This::STATUS_OKAY;
   }
 
   // R_ARM_REL32: (S + A) | T - P
   static inline typename This::Status
   rel32(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval,
 	Arm_address address,
 	Arm_address thumb_bit)
   {
-    typedef typename elfcpp::Swap<32, big_endian>::Valtype Valtype;
-    Valtype* wv = reinterpret_cast<Valtype*>(view);
-    Valtype addend = elfcpp::Swap<32, big_endian>::readval(wv);
+    typedef typename elfcpp::Swap_unaligned<32, big_endian>::Valtype Valtype;
+    Valtype addend = elfcpp::Swap_unaligned<32, big_endian>::readval(view);
     Valtype x = (psymval->value(object, addend) | thumb_bit) - address;
-    elfcpp::Swap<32, big_endian>::writeval(wv, x);
+    elfcpp::Swap_unaligned<32, big_endian>::writeval(view, x);
     return This::STATUS_OKAY;
   }
 
@@ -3323,7 +3348,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_JUMP6: S + A – P
   static inline typename This::Status
   thm_jump6(unsigned char* view,
-	    const Sized_relobj<32, big_endian>* object,
+	    const Sized_relobj_file<32, big_endian>* object,
 	    const Symbol_value<32>* psymval,
 	    Arm_address address)
   {
@@ -3345,18 +3370,19 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_JUMP8: S + A – P
   static inline typename This::Status
   thm_jump8(unsigned char* view,
-	    const Sized_relobj<32, big_endian>* object,
+	    const Sized_relobj_file<32, big_endian>* object,
 	    const Symbol_value<32>* psymval,
 	    Arm_address address)
   {
     typedef typename elfcpp::Swap<16, big_endian>::Valtype Valtype;
-    typedef typename elfcpp::Swap<16, big_endian>::Valtype Reltype;
     Valtype* wv = reinterpret_cast<Valtype*>(view);
     Valtype val = elfcpp::Swap<16, big_endian>::readval(wv);
-    Reltype addend = utils::sign_extend<8>((val & 0x00ff) << 1);
-    Reltype x = (psymval->value(object, addend) - address);
-    elfcpp::Swap<16, big_endian>::writeval(wv, (val & 0xff00) | ((x & 0x01fe) >> 1));
-    return (utils::has_overflow<8>(x)
+    int32_t addend = utils::sign_extend<8>((val & 0x00ff) << 1);
+    int32_t x = (psymval->value(object, addend) - address);
+    elfcpp::Swap<16, big_endian>::writeval(wv, ((val & 0xff00)
+                                                | ((x & 0x01fe) >> 1)));
+    // We do a 9-bit overflow check because x is right-shifted by 1 bit.
+    return (utils::has_overflow<9>(x)
 	    ? This::STATUS_OVERFLOW
 	    : This::STATUS_OKAY);
   }
@@ -3364,18 +3390,19 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_JUMP11: S + A – P
   static inline typename This::Status
   thm_jump11(unsigned char* view,
-	    const Sized_relobj<32, big_endian>* object,
+	    const Sized_relobj_file<32, big_endian>* object,
 	    const Symbol_value<32>* psymval,
 	    Arm_address address)
   {
     typedef typename elfcpp::Swap<16, big_endian>::Valtype Valtype;
-    typedef typename elfcpp::Swap<16, big_endian>::Valtype Reltype;
     Valtype* wv = reinterpret_cast<Valtype*>(view);
     Valtype val = elfcpp::Swap<16, big_endian>::readval(wv);
-    Reltype addend = utils::sign_extend<11>((val & 0x07ff) << 1);
-    Reltype x = (psymval->value(object, addend) - address);
-    elfcpp::Swap<16, big_endian>::writeval(wv, (val & 0xf800) | ((x & 0x0ffe) >> 1));
-    return (utils::has_overflow<11>(x)
+    int32_t addend = utils::sign_extend<11>((val & 0x07ff) << 1);
+    int32_t x = (psymval->value(object, addend) - address);
+    elfcpp::Swap<16, big_endian>::writeval(wv, ((val & 0xf800)
+                                                | ((x & 0x0ffe) >> 1)));
+    // We do a 12-bit overflow check because x is right-shifted by 1 bit.
+    return (utils::has_overflow<12>(x)
 	    ? This::STATUS_OVERFLOW
 	    : This::STATUS_OKAY);
   }
@@ -3421,18 +3448,17 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_PREL: (S + A) | T - P
   static inline typename This::Status
   prel31(unsigned char* view,
-	 const Sized_relobj<32, big_endian>* object,
+	 const Sized_relobj_file<32, big_endian>* object,
 	 const Symbol_value<32>* psymval,
 	 Arm_address address,
 	 Arm_address thumb_bit)
   {
-    typedef typename elfcpp::Swap<32, big_endian>::Valtype Valtype;
-    Valtype* wv = reinterpret_cast<Valtype*>(view);
-    Valtype val = elfcpp::Swap<32, big_endian>::readval(wv);
+    typedef typename elfcpp::Swap_unaligned<32, big_endian>::Valtype Valtype;
+    Valtype val = elfcpp::Swap_unaligned<32, big_endian>::readval(view);
     Valtype addend = utils::sign_extend<31>(val);
     Valtype x = (psymval->value(object, addend) | thumb_bit) - address;
     val = utils::bit_select(val, x, 0x7fffffffU);
-    elfcpp::Swap<32, big_endian>::writeval(wv, val);
+    elfcpp::Swap_unaligned<32, big_endian>::writeval(view, val);
     return (utils::has_overflow<31>(x) ?
 	    This::STATUS_OVERFLOW : This::STATUS_OKAY);
   }
@@ -3443,7 +3469,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_MOVW_BREL: ((S + A) | T) - B(S)
   static inline typename This::Status
   movw(unsigned char* view,
-       const Sized_relobj<32, big_endian>* object,
+       const Sized_relobj_file<32, big_endian>* object,
        const Symbol_value<32>* psymval,
        Arm_address relative_address_base,
        Arm_address thumb_bit,
@@ -3467,7 +3493,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_MOVT_BREL: S + A - B(S)
   static inline typename This::Status
   movt(unsigned char* view,
-       const Sized_relobj<32, big_endian>* object,
+       const Sized_relobj_file<32, big_endian>* object,
        const Symbol_value<32>* psymval,
        Arm_address relative_address_base)
   {
@@ -3488,7 +3514,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_MOVW_BREL: ((S + A) | T) - B(S)
   static inline typename This::Status
   thm_movw(unsigned char* view,
-	   const Sized_relobj<32, big_endian>* object,
+	   const Sized_relobj_file<32, big_endian>* object,
 	   const Symbol_value<32>* psymval,
 	   Arm_address relative_address_base,
 	   Arm_address thumb_bit,
@@ -3515,7 +3541,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_MOVT_BREL: S + A - B(S)
   static inline typename This::Status
   thm_movt(unsigned char* view,
-	   const Sized_relobj<32, big_endian>* object,
+	   const Sized_relobj_file<32, big_endian>* object,
 	   const Symbol_value<32>* psymval,
 	   Arm_address relative_address_base)
   {
@@ -3535,7 +3561,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_ALU_PREL_11_0: ((S + A) | T) - Pa (Thumb32)
   static inline typename This::Status
   thm_alu11(unsigned char* view,
-	    const Sized_relobj<32, big_endian>* object,
+	    const Sized_relobj_file<32, big_endian>* object,
 	    const Symbol_value<32>* psymval,
 	    Arm_address address,
 	    Arm_address thumb_bit)
@@ -3589,7 +3615,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_PC8: S + A - Pa (Thumb)
   static inline typename This::Status
   thm_pc8(unsigned char* view,
-	  const Sized_relobj<32, big_endian>* object,
+	  const Sized_relobj_file<32, big_endian>* object,
 	  const Symbol_value<32>* psymval,
 	  Arm_address address)
   {
@@ -3611,7 +3637,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_THM_PC12: S + A - Pa (Thumb32)
   static inline typename This::Status
   thm_pc12(unsigned char* view,
-	   const Sized_relobj<32, big_endian>* object,
+	   const Sized_relobj_file<32, big_endian>* object,
 	   const Symbol_value<32>* psymval,
 	   Arm_address address)
   {
@@ -3696,7 +3722,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_ALU_SB_G2:    ((S + A) | T) - B(S)
   static inline typename This::Status
   arm_grp_alu(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval,
 	const int group,
 	Arm_address address,
@@ -3753,7 +3779,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_LDR_SB_G2: S + A - B(S)
   static inline typename This::Status
   arm_grp_ldr(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval,
 	const int group,
 	Arm_address address)
@@ -3791,7 +3817,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_LDRS_SB_G2: S + A - B(S)
   static inline typename This::Status
   arm_grp_ldrs(unsigned char* view,
-	const Sized_relobj<32, big_endian>* object,
+	const Sized_relobj_file<32, big_endian>* object,
 	const Symbol_value<32>* psymval,
 	const int group,
 	Arm_address address)
@@ -3829,7 +3855,7 @@ class Arm_relocate_functions : public Relocate_functions<32, big_endian>
   // R_ARM_LDC_SB_G2: S + A - B(S)
   static inline typename This::Status
   arm_grp_ldc(unsigned char* view,
-      const Sized_relobj<32, big_endian>* object,
+      const Sized_relobj_file<32, big_endian>* object,
       const Symbol_value<32>* psymval,
       const int group,
       Arm_address address)
@@ -3943,7 +3969,7 @@ Arm_relocate_functions<big_endian>::arm_branch_common(
 
   // We need a stub if the branch offset is too large or if we need
   // to switch mode.
-  bool may_use_blx = arm_target->may_use_blx();
+  bool may_use_blx = arm_target->may_use_v5t_interworking();
   Reloc_stub* stub = NULL;
 
   if (!parameters->options().relocatable()
@@ -4074,7 +4100,7 @@ Arm_relocate_functions<big_endian>::thumb_branch_common(
   Arm_address branch_target = psymval->value(object, addend);
 
   // For BLX, bit 1 of target address comes from bit 1 of base address.
-  bool may_use_blx = arm_target->may_use_blx();
+  bool may_use_blx = arm_target->may_use_v5t_interworking();
   if (thumb_bit == 0 && may_use_blx)
     branch_target = utils::bit_select(branch_target, address, 0x2);
 
@@ -4457,7 +4483,7 @@ Reloc_stub::stub_type_for_reloc(
     {
       const Target_arm<true>* big_endian_target =
 	Target_arm<true>::default_target();
-      may_use_blx = big_endian_target->may_use_blx();
+      may_use_blx = big_endian_target->may_use_v5t_interworking();
       should_force_pic_veneer = big_endian_target->should_force_pic_veneer();
       thumb2 = big_endian_target->using_thumb2();
       thumb_only = big_endian_target->using_thumb_only();
@@ -4466,7 +4492,7 @@ Reloc_stub::stub_type_for_reloc(
     {
       const Target_arm<false>* little_endian_target =
 	Target_arm<false>::default_target();
-      may_use_blx = little_endian_target->may_use_blx();
+      may_use_blx = little_endian_target->may_use_v5t_interworking();
       should_force_pic_veneer = little_endian_target->should_force_pic_veneer();
       thumb2 = little_endian_target->using_thumb2();
       thumb_only = little_endian_target->using_thumb_only();
@@ -5212,8 +5238,7 @@ Arm_exidx_cantunwind::do_fixed_endian_write(Output_file* of)
   const section_size_type oview_size = 8;
   unsigned char* const oview = of->get_output_view(offset, oview_size);
   
-  typedef typename elfcpp::Swap<32, big_endian>::Valtype Valtype;
-  Valtype* wv = reinterpret_cast<Valtype*>(oview);
+  typedef typename elfcpp::Swap_unaligned<32, big_endian>::Valtype Valtype;
 
   Output_section* os = this->relobj_->output_section(this->shndx_);
   gold_assert(os != NULL);
@@ -5254,8 +5279,10 @@ Arm_exidx_cantunwind::do_fixed_endian_write(Output_file* of)
   uint32_t prel31_offset = output_address - this->address();
   if (utils::has_overflow<31>(offset))
     gold_error(_("PREL31 overflow in EXIDX_CANTUNWIND entry"));
-  elfcpp::Swap<32, big_endian>::writeval(wv, prel31_offset & 0x7fffffffU);
-  elfcpp::Swap<32, big_endian>::writeval(wv + 1, elfcpp::EXIDX_CANTUNWIND);
+  elfcpp::Swap_unaligned<32, big_endian>::writeval(oview,
+						   prel31_offset & 0x7fffffffU);
+  elfcpp::Swap_unaligned<32, big_endian>::writeval(oview + 4,
+						   elfcpp::EXIDX_CANTUNWIND);
 
   of->write_output_view(this->offset(), oview_size, oview);
 }
@@ -5797,8 +5824,7 @@ Arm_output_section<big_endian>::append_text_sections_to_list(
     {
       // We only care about plain or relaxed input sections.  We also
       // ignore any merged sections.
-      if ((p->is_input_section() || p->is_relaxed_input_section())
-	  && p->data_size() != 0)
+      if (p->is_input_section() || p->is_relaxed_input_section())
 	list->push_back(Text_section_list::value_type(p->relobj(),
 						      p->shndx()));
     }
@@ -6336,7 +6362,7 @@ Arm_relobj<big_endian>::scan_sections_for_stubs(
 // do_count_local_symbol in parent and scan local symbols to mark
 // THUMB functions.  This is not the most efficient way but I do not want to
 // slow down other ports by calling a per symbol target hook inside
-// Sized_relobj<size, big_endian>::do_count_local_symbols. 
+// Sized_relobj_file<size, big_endian>::do_count_local_symbols. 
 
 template<bool big_endian>
 void
@@ -6348,7 +6374,7 @@ Arm_relobj<big_endian>::do_count_local_symbols(
   // STT_ARM_TFUNC.
   
   // Ask parent to count the local symbols.
-  Sized_relobj<32, big_endian>::do_count_local_symbols(pool, dynpool);
+  Sized_relobj_file<32, big_endian>::do_count_local_symbols(pool, dynpool);
   const unsigned int loccount = this->local_symbol_count();
   if (loccount == 0)
     return;
@@ -6396,7 +6422,7 @@ Arm_relobj<big_endian>::do_count_local_symbols(
 
   // Skip the first dummy symbol.
   psyms += sym_size;
-  typename Sized_relobj<32, big_endian>::Local_values* plocal_values =
+  typename Sized_relobj_file<32, big_endian>::Local_values* plocal_values =
     this->local_values();
   for (unsigned int i = 1; i < loccount; ++i, psyms += sym_size)
     {
@@ -6439,11 +6465,11 @@ Arm_relobj<big_endian>::do_relocate_sections(
     const Layout* layout,
     const unsigned char* pshdrs,
     Output_file* of,
-    typename Sized_relobj<32, big_endian>::Views* pviews)
+    typename Sized_relobj_file<32, big_endian>::Views* pviews)
 {
   // Call parent to relocate sections.
-  Sized_relobj<32, big_endian>::do_relocate_sections(symtab, layout, pshdrs,
-						     of, pviews); 
+  Sized_relobj_file<32, big_endian>::do_relocate_sections(symtab, layout,
+							  pshdrs, of, pviews); 
 
   // We do not generate stubs if doing a relocatable link.
   if (parameters->options().relocatable())
@@ -6679,7 +6705,7 @@ void
 Arm_relobj<big_endian>::do_read_symbols(Read_symbols_data* sd)
 {
   // Call parent class to read symbol information.
-  Sized_relobj<32, big_endian>::do_read_symbols(sd);
+  Sized_relobj_file<32, big_endian>::do_read_symbols(sd);
 
   // If this input file is a binary file, it has no processor
   // specific flags and attributes section.
@@ -6839,7 +6865,7 @@ Arm_relobj<big_endian>::do_gc_process_relocs(Symbol_table* symtab,
 					     Read_relocs_data* rd)
 {
   // First, call base class method to process relocations in this object.
-  Sized_relobj<32, big_endian>::do_gc_process_relocs(symtab, layout, rd);
+  Sized_relobj_file<32, big_endian>::do_gc_process_relocs(symtab, layout, rd);
 
   // If --gc-sections is not specified, there is nothing more to do.
   // This happens when --icf is used but --gc-sections is not.
@@ -6904,7 +6930,7 @@ Arm_relobj<big_endian>::update_output_local_symbol_count()
 
   // Loop over the local symbols.
 
-  typedef typename Sized_relobj<32, big_endian>::Output_sections
+  typedef typename Sized_relobj_file<32, big_endian>::Output_sections
      Output_sections;
   const Output_sections& out_sections(this->output_sections());
   unsigned int shnum = this->shnum();
@@ -7085,7 +7111,7 @@ template<bool big_endian>
 void
 Arm_output_data_got<big_endian>::add_tls_gd32_with_static_reloc(
   unsigned int got_type,
-  Sized_relobj<32, big_endian>* object,
+  Sized_relobj_file<32, big_endian>* object,
   unsigned int index)
 {
   if (object->local_has_got_offset(index, got_type))
@@ -7134,7 +7160,7 @@ Arm_output_data_got<big_endian>::do_write(Output_file* of)
       Arm_address value;
       if (!reloc.symbol_is_global())
 	{
-	  Sized_relobj<32, big_endian>* object = reloc.relobj();
+	  Sized_relobj_file<32, big_endian>* object = reloc.relobj();
 	  const Symbol_value<32>* psymval =
 	    reloc.relobj()->local_symbol(reloc.index());
 
@@ -7532,7 +7558,7 @@ unsigned int
 Target_arm<big_endian>::got_mod_index_entry(
     Symbol_table* symtab,
     Layout* layout,
-    Sized_relobj<32, big_endian>* object)
+    Sized_relobj_file<32, big_endian>* object)
 {
   if (this->got_mod_index_offset_ == -1U)
     {
@@ -7698,7 +7724,7 @@ Target_arm<big_endian>::Scan::get_reference_flags(unsigned int r_type)
 template<bool big_endian>
 void
 Target_arm<big_endian>::Scan::unsupported_reloc_local(
-    Sized_relobj<32, big_endian>* object,
+    Sized_relobj_file<32, big_endian>* object,
     unsigned int r_type)
 {
   gold_error(_("%s: unsupported reloc %u against local symbol"),
@@ -7766,7 +7792,7 @@ inline void
 Target_arm<big_endian>::Scan::local(Symbol_table* symtab,
 				    Layout* layout,
 				    Target_arm* target,
-				    Sized_relobj<32, big_endian>* object,
+				    Sized_relobj_file<32, big_endian>* object,
 				    unsigned int data_shndx,
 				    Output_section* output_section,
 				    const elfcpp::Rel<32, big_endian>& reloc,
@@ -8070,7 +8096,7 @@ Target_arm<big_endian>::Scan::local(Symbol_table* symtab,
 template<bool big_endian>
 void
 Target_arm<big_endian>::Scan::unsupported_reloc_global(
-    Sized_relobj<32, big_endian>* object,
+    Sized_relobj_file<32, big_endian>* object,
     unsigned int r_type,
     Symbol* gsym)
 {
@@ -8112,7 +8138,7 @@ Target_arm<big_endian>::Scan::local_reloc_may_be_function_pointer(
   Symbol_table*,
   Layout*,
   Target_arm<big_endian>* target,
-  Sized_relobj<32, big_endian>*,
+  Sized_relobj_file<32, big_endian>*,
   unsigned int,
   Output_section*,
   const elfcpp::Rel<32, big_endian>&,
@@ -8129,7 +8155,7 @@ Target_arm<big_endian>::Scan::global_reloc_may_be_function_pointer(
   Symbol_table*,
   Layout*,
   Target_arm<big_endian>* target,
-  Sized_relobj<32, big_endian>*,
+  Sized_relobj_file<32, big_endian>*,
   unsigned int,
   Output_section*,
   const elfcpp::Rel<32, big_endian>&,
@@ -8151,7 +8177,7 @@ inline void
 Target_arm<big_endian>::Scan::global(Symbol_table* symtab,
 				     Layout* layout,
 				     Target_arm* target,
-				     Sized_relobj<32, big_endian>* object,
+				     Sized_relobj_file<32, big_endian>* object,
 				     unsigned int data_shndx,
 				     Output_section* output_section,
 				     const elfcpp::Rel<32, big_endian>& reloc,
@@ -8480,17 +8506,18 @@ Target_arm<big_endian>::Scan::global(Symbol_table* symtab,
 
 template<bool big_endian>
 void
-Target_arm<big_endian>::gc_process_relocs(Symbol_table* symtab,
-					  Layout* layout,
-					  Sized_relobj<32, big_endian>* object,
-					  unsigned int data_shndx,
-					  unsigned int,
-					  const unsigned char* prelocs,
-					  size_t reloc_count,
-					  Output_section* output_section,
-					  bool needs_special_offset_handling,
-					  size_t local_symbol_count,
-					  const unsigned char* plocal_symbols)
+Target_arm<big_endian>::gc_process_relocs(
+    Symbol_table* symtab,
+    Layout* layout,
+    Sized_relobj_file<32, big_endian>* object,
+    unsigned int data_shndx,
+    unsigned int,
+    const unsigned char* prelocs,
+    size_t reloc_count,
+    Output_section* output_section,
+    bool needs_special_offset_handling,
+    size_t local_symbol_count,
+    const unsigned char* plocal_symbols)
 {
   typedef Target_arm<big_endian> Arm;
   typedef typename Target_arm<big_endian>::Scan Scan;
@@ -8516,7 +8543,7 @@ template<bool big_endian>
 void
 Target_arm<big_endian>::scan_relocs(Symbol_table* symtab,
 				    Layout* layout,
-				    Sized_relobj<32, big_endian>* object,
+				    Sized_relobj_file<32, big_endian>* object,
 				    unsigned int data_shndx,
 				    unsigned int sh_type,
 				    const unsigned char* prelocs,
@@ -8596,12 +8623,8 @@ Target_arm<big_endian>::do_finalize_sections(
   if (this->attributes_section_data_ == NULL)
     this->attributes_section_data_ = new Attributes_section_data(NULL, 0);
 
-  // Check BLX use.
   const Object_attribute* cpu_arch_attr =
     this->get_aeabi_object_attribute(elfcpp::Tag_CPU_arch);
-  if (cpu_arch_attr->int_value() > elfcpp::TAG_CPU_ARCH_V4)
-    this->set_may_use_blx(true);
- 
   // Check if we need to use Cortex-A8 workaround.
   if (parameters->options().user_set_fix_cortex_a8())
     this->fix_cortex_a8_ = parameters->options().fix_cortex_a8();
@@ -8622,7 +8645,7 @@ Target_arm<big_endian>::do_finalize_sections(
   // The V4BX interworking stub contains BX instruction,
   // which is not specified for some profiles.
   if (this->fix_v4bx() == General_options::FIX_V4BX_INTERWORKING
-      && !this->may_use_blx())
+      && !this->may_use_v4t_interworking())
     gold_error(_("unable to provide V4BX reloc interworking fix up; "
 	         "the target profile does not support BX instruction"));
 
@@ -9291,7 +9314,7 @@ Target_arm<big_endian>::Relocate::relocate_tls(
   typedef Relocate_functions<32, big_endian> RelocFuncs;
   Output_segment* tls_segment = relinfo->layout->tls_segment();
 
-  const Sized_relobj<32, big_endian>* object = relinfo->object;
+  const Sized_relobj_file<32, big_endian>* object = relinfo->object;
 
   elfcpp::Elf_types<32>::Elf_Addr value = psymval->value(object, 0);
 
@@ -9325,7 +9348,7 @@ Target_arm<big_endian>::Relocate::relocate_tls(
 	      
               // Relocate the field with the PC relative offset of the pair of
               // GOT entries.
-	      RelocFuncs::pcrel32(view, got_entry, address);
+	      RelocFuncs::pcrel32_unaligned(view, got_entry, address);
               return ArmRelocFuncs::STATUS_OKAY;
             }
         }
@@ -9344,13 +9367,13 @@ Target_arm<big_endian>::Relocate::relocate_tls(
 
           // Relocate the field with the PC relative offset of the pair of
           // GOT entries.
-          RelocFuncs::pcrel32(view, got_entry, address);
+          RelocFuncs::pcrel32_unaligned(view, got_entry, address);
 	  return ArmRelocFuncs::STATUS_OKAY;
         }
       break;
 
     case elfcpp::R_ARM_TLS_LDO32:	// Alternate local-dynamic
-      RelocFuncs::rel32(view, value);
+      RelocFuncs::rel32_unaligned(view, value);
       return ArmRelocFuncs::STATUS_OKAY;
 
     case elfcpp::R_ARM_TLS_IE32:	// Initial-exec
@@ -9379,7 +9402,7 @@ Target_arm<big_endian>::Relocate::relocate_tls(
 	    target->got_plt_section()->address() + got_offset;
 
           // Relocate the field with the PC relative offset of the GOT entry.
-	  RelocFuncs::pcrel32(view, got_entry, address);
+	  RelocFuncs::pcrel32_unaligned(view, got_entry, address);
 	  return ArmRelocFuncs::STATUS_OKAY;
         }
       break;
@@ -9395,7 +9418,7 @@ Target_arm<big_endian>::Relocate::relocate_tls(
 	  // need to add TCB size to the offset.
 	  Arm_address aligned_tcb_size =
 	    align_address(ARM_TCB_SIZE, tls_segment->maximum_alignment());
-          RelocFuncs::rel32(view, value + aligned_tcb_size);
+          RelocFuncs::rel32_unaligned(view, value + aligned_tcb_size);
 
         }
       return ArmRelocFuncs::STATUS_OKAY;
@@ -9497,7 +9520,7 @@ void
 Target_arm<big_endian>::scan_relocatable_relocs(
     Symbol_table* symtab,
     Layout* layout,
-    Sized_relobj<32, big_endian>* object,
+    Sized_relobj_file<32, big_endian>* object,
     unsigned int data_shndx,
     unsigned int sh_type,
     const unsigned char* prelocs,
@@ -9973,9 +9996,9 @@ Target_arm<big_endian>::do_adjust_elf_header(
 }
 
 // do_make_elf_object to override the same function in the base class.
-// We need to use a target-specific sub-class of Sized_relobj<32, big_endian>
-// to store ARM specific information.  Hence we need to have our own
-// ELF object creation.
+// We need to use a target-specific sub-class of
+// Sized_relobj_file<32, big_endian> to store ARM specific information.
+// Hence we need to have our own ELF object creation.
 
 template<bool big_endian>
 Object*
@@ -9985,7 +10008,10 @@ Target_arm<big_endian>::do_make_elf_object(
     off_t offset, const elfcpp::Ehdr<32, big_endian>& ehdr)
 {
   int et = ehdr.get_e_type();
-  if (et == elfcpp::ET_REL)
+  // ET_EXEC files are valid input for --just-symbols/-R,
+  // and we treat them as relocatable objects.
+  if (et == elfcpp::ET_REL
+      || (et == elfcpp::ET_EXEC && input_file->just_symbols()))
     {
       Arm_relobj<big_endian>* obj =
         new Arm_relobj<big_endian>(name, input_file, offset, ehdr);
@@ -10195,7 +10221,7 @@ Target_arm<big_endian>::tag_cpu_arch_combine(
 
   // Check we've not got a higher architecture than we know about.
 
-  if (oldtag >= elfcpp::MAX_TAG_CPU_ARCH || newtag >= elfcpp::MAX_TAG_CPU_ARCH)
+  if (oldtag > elfcpp::MAX_TAG_CPU_ARCH || newtag > elfcpp::MAX_TAG_CPU_ARCH)
     {
       gold_error(_("%s: unknown CPU architecture"), name);
       return -1;
@@ -11185,7 +11211,7 @@ Target_arm<big_endian>::scan_reloc_section_for_stubs(
 	  // symbol.
 	  if (!is_defined_in_discarded_section)
 	    {
-	      typedef Sized_relobj<32, big_endian> ObjType;
+	      typedef Sized_relobj_file<32, big_endian> ObjType;
 	      typename ObjType::Compute_final_local_value_status status =
 		arm_object->compute_final_local_value(r_sym, psymval, &symval,
 						      relinfo->symtab); 
@@ -11789,7 +11815,7 @@ Target_arm<big_endian>::scan_span_for_cortex_a8_erratum(
 	      // an ARM instruction.  If we were not making a stub,
 	      // the BL would have been converted to a BLX.  Use the
 	      // BLX stub instead in that case.
-	      if (this->may_use_blx() && force_target_arm
+	      if (this->may_use_v5t_interworking() && force_target_arm
 		  && stub_type == arm_stub_a8_veneer_bl)
 		{
 		  stub_type = arm_stub_a8_veneer_blx;
@@ -11895,7 +11921,8 @@ class Target_selector_arm : public Target_selector
  public:
   Target_selector_arm()
     : Target_selector(elfcpp::EM_ARM, 32, big_endian,
-		      (big_endian ? "elf32-bigarm" : "elf32-littlearm"))
+		      (big_endian ? "elf32-bigarm" : "elf32-littlearm"),
+		      (big_endian ? "armelfb" : "armelf"))
   { }
 
   Target*

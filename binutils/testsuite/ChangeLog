@@ -1,3 +1,66 @@
+2011-09-28  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	Apply from mainline.
+	2011-09-28  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+	* binutils-all/elfedit-4.d: Give test a unique name.
+
+2011-09-15  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR binutils/13180
+	* binutils-all/group-6.d: New.
+	* binutils-all/group-6.s: Likewise.
+
+	* binutils-all/objcopy.exp: Run group-6 for ELF targrts.
+
+2011-07-22  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* binutils-all/elfedit.exp: Run elfedit-4.
+
+	* binutils-all/elfedit-4.d: New.
+
+2011-06-30  Bernd Schmidt  <bernds@codesourcery.com>
+
+	* binutils-all/objcopy.exp (strip_test, strip_executable):
+	On ELF targets, test that OS/ABI is preserved.
+	(copy_setup): Do test on tic6x-*-uclinux.
+
+2011-06-19  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* binutils-all/elfedit-1.d: Updated for x32.
+
+2011-05-18  Nick Clifton  <nickc@redhat.com>
+
+	PR binutils/12753
+	* lib/utils-lib.exp (run_dump_test): Allow nm as a program.
+	* binutils-all/nm.exp: Test running "nm -g" on an object file
+	containing a unique symbol.
+
+2011-05-13  Alan Modra  <amodra@gmail.com>
+
+	* binutils-all/objcopy.exp objcopy_text): Remove xfails for sh-rtems
+	and tic4x.
+
+2011-05-02  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR binutils/12720
+	* binutils-all/ar.exp (delete_an_element): New.
+	(move_an_element): Likewise.
+	Run delete_an_element and move_an_element.
+
+2011-04-30  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* binutils-all/x86-64/compressed-1a.d: Adjust for change in output
+	format.
+
+2011-04-29  Hans-Peter Nilsson  <hp@axis.com>
+
+	* binutils-all/i386/compressed-1a.d: Adjust for change in output
+	format.
+
+2011-04-28  Tom Tromey  <tromey@redhat.com>
+
+	* binutils-all/objdump.W: Correct output.
+
 011-04-11  Kai Tietz
 
 	* binutils-all/windres/windres.exp: Add '// cpparg <option>' command

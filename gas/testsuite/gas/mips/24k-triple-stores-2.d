@@ -1,14 +1,14 @@
 #objdump: -dr
-#as: -mfix-24k
+#as: -mfix-24k -32
 #name: 24K: Triple Store (Range Check)
 
 .*: +file format .*mips.*
 
 Disassembly of section .text:
-00000000 <.text>:
+0+ <.*>:
    0:	a3a20000 	sb	v0,0\(sp\)
-   4:	00000000 	nop
-   8:	a3a3000a 	sb	v1,10\(sp\)
+   4:	a3a3000a 	sb	v1,10\(sp\)
+   8:	00000000 	nop
    c:	a3a4001f 	sb	a0,31\(sp\)
   10:	0000000d 	break
   14:	a7a20000 	sh	v0,0\(sp\)
