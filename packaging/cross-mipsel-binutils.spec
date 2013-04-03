@@ -3,7 +3,6 @@
 %define enable_shared 1
 %define run_testsuite 0
 %define accelerator_crossbuild 0
-%define disable_nls 1
 
 Summary: A GNU collection of binary utilities
 Name: cross-mipsel-binutils
@@ -30,7 +29,6 @@ Patch12: fixbug13534_2.patch
 Patch13: fixbug13534_3.patch
 Patch14: fixbug13534_4.patch
 Patch15: fixbug13534_5.patch
-Patch16: pr_13990_14189.patch
 
 %if "%{name}" != "binutils"
 %if "%{name}" != "cross-mipsel-binutils"
@@ -116,7 +114,6 @@ to consider using libelf instead of BFD.
 %patch13 -p1 -b .fixbug13534_3
 %patch14 -p1 -b .fixbug13534_4
 %patch15 -p1 -b .fixbug13534_5
-%patch16 -p1
 
 # We cannot run autotools as there is an exact requirement of autoconf-2.59.
 
@@ -182,9 +179,6 @@ export CFLAGS="$CFLAGS -Wl,-rpath,/emul/ia32-linux/usr/lib:/emul/ia32-linux/lib:
   $CARGS \
   --disable-werror \
   --enable-lto \
-%if %{disable_nls}
-  -- disable-nls \
-%endif
   --with-bugurl=http://bugzilla.tizen.com
 make %{_smp_mflags} tooldir=%{_prefix} all
 make %{_smp_mflags} tooldir=%{_prefix} info
@@ -299,7 +293,6 @@ rm -rf %{buildroot}%{_prefix}/%{_lib}/libiberty.a
 rm -f %{buildroot}%{_infodir}/dir
 rm -rf %{buildroot}%{_prefix}/%{binutils_target}
 
-%if !%{disable_nls}
 %find_lang %{?cross}binutils
 %find_lang %{?cross}opcodes
 %find_lang %{?cross}bfd
@@ -311,7 +304,6 @@ cat %{?cross}bfd.lang >> %{?cross}binutils.lang
 cat %{?cross}gas.lang >> %{?cross}binutils.lang
 cat %{?cross}ld.lang >> %{?cross}binutils.lang
 cat %{?cross}gprof.lang >> %{?cross}binutils.lang
-%endif
 
 %clean
 rm -rf %{buildroot}
@@ -349,11 +341,7 @@ if [ $1 = 0 ] ;then
 fi
 %endif # %{isnative}
 
-%if %{disable_nls}
-%files
-%else
 %files -f %{?cross}binutils.lang
-%endif
 %defattr(-,root,root,-)
 %doc README
 %{_prefix}/bin/*
