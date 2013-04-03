@@ -183,7 +183,7 @@ export CFLAGS="$CFLAGS -Wl,-rpath,/emul/ia32-linux/usr/lib:/emul/ia32-linux/lib:
   --disable-werror \
   --enable-lto \
 %if %{disable_nls}
-  -- disable-nls \
+  --disable-nls \
 %endif
   --with-bugurl=http://bugzilla.tizen.com
 make %{_smp_mflags} tooldir=%{_prefix} all
