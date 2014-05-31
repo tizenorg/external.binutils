@@ -1,0 +1,145 @@
+diff --git a/bfd/ChangeLog b/bfd/ChangeLog
+index 1f6c1a0..0c81318 100644
+--- a/bfd/ChangeLog
++++ b/bfd/ChangeLog
+@@ -1,3 +1,15 @@
++2012-06-29  Nick Clifton  <nickc@redhat.com>
++
++	PR ld/14189
++	* elf32-arm.c (elf32_arm_check_relocs): Do not increment refcount
++	for locally bound symbols.
++
++2012-04-24  Hans-Peter Nilsson  <hp@axis.com>
++
++	PR ld/13990
++	* elf32-arm.c (elf32_arm_gc_sweep_hook): Handle a forced-local
++	symbol, where PLT refcount is set to -1.
++
+ 2011-12-10  David Daney  <david.daney@cavium.com>
+ 
+ 	Backport from mainline:
+diff --git a/bfd/elf32-arm.c b/bfd/elf32-arm.c
+index 1f6c1a0..8daebe5 100644
+--- a/bfd/elf32-arm.c
++++ b/bfd/elf32-arm.c
+@@ -12046,9 +12046,19 @@ elf32_arm_gc_sweep_hook (bfd *                     abfd,
+       if (may_need_local_target_p
+ 	  && elf32_arm_get_plt_info (abfd, eh, r_symndx, &root_plt, &arm_plt))
+ 	{
+-	  BFD_ASSERT (root_plt->refcount > 0);
+-	  root_plt->refcount -= 1;
+-
++	  /* If PLT refcount book-keeping is wrong and too low, we'll
++	     see a zero value (going to -1) for the root PLT reference
++	     count.  */
++	  if (root_plt->refcount >= 0)
++	    {
++	      BFD_ASSERT (root_plt->refcount != 0);
++	      root_plt->refcount -= 1;
++	    }
++	  else
++	    /* A value of -1 means the symbol has become local, forced
++	       or seeing a hidden definition.  Any other negative value
++	       is an error.  */
++	    BFD_ASSERT (root_plt->refcount == -1);
+ 	  if (!call_reloc_p)
+ 	    arm_plt->noncall_refcount--;
+ 
+@@ -12408,7 +12418,8 @@ elf32_arm_check_relocs (bfd *abfd, struct bfd_link_info *info,
+ 
+ 	  /* If the symbol is a function that doesn't bind locally,
+ 	     this relocation will need a PLT entry.  */
+-	  root_plt->refcount += 1;
++          if (root_plt->refcount != -1)
++  	    root_plt->refcount += 1;
+ 
+ 	  if (!call_reloc_p)
+ 	    arm_plt->noncall_refcount++;
+diff --git a/ld/testsuite/ld-arm/arm-elf.exp b/ld/testsuite/ld-arm/arm-elf.exp
+index c7a0b2c..8631466 100644
+--- a/ld/testsuite/ld-arm/arm-elf.exp
++++ b/ld/testsuite/ld-arm/arm-elf.exp
+@@ -733,3 +733,4 @@ run_dump_test "attr-merge-vfp-6r"
+ run_dump_test "attr-merge-incompatible"
+ run_dump_test "unresolved-1"
+ run_dump_test "unresolved-1-dyn"
++run_dump_test "gc-hidden-1"
+diff --git a/ld/testsuite/ld-arm/gc-hidden-1.d b/ld/testsuite/ld-arm/gc-hidden-1.d
+new file mode 100644
+index 0000000..80c7e9e
+--- /dev/null
++++ b/ld/testsuite/ld-arm/gc-hidden-1.d
+@@ -0,0 +1,25 @@
++#target: arm*-*-*eabi
++#source: main.s
++#source: gcdfn.s
++#source: hidfn.s
++#ld: --gc-sections --shared --version-script hideall.ld
++#objdump: -dRT
++
++# See PR ld/13990: a forced-local PLT reference to a
++# forced-local symbol is GC'ed, trigging a BFD_ASSERT.
++
++.*:     file format elf32-.*
++
++DYNAMIC SYMBOL TABLE:
++0+124 l    d  .text	0+              .text
++0+ g    DO \*ABS\*	0+  NS          NS
++
++Disassembly of section .text:
++
++0+124 <_start>:
++ 124:	e52de004 	push	{lr}		; \(str lr, \[sp, #-4\]!\)
++ 128:	eb000000 	bl	130 <hidfn>
++ 12c:	e8bd8000 	pop	{pc}
++
++0+130 <hidfn>:
++ 130:	e8bd8000 	pop	{pc}
+diff --git a/ld/testsuite/ld-arm/gcdfn.s b/ld/testsuite/ld-arm/gcdfn.s
+new file mode 100644
+index 0000000..f2afae7
+--- /dev/null
++++ b/ld/testsuite/ld-arm/gcdfn.s
+@@ -0,0 +1,8 @@
++	.text
++	.globl gcdfn
++	.type gcdfn, %function
++gcdfn:
++	str	lr, [sp, #-4]!
++	bl	hidfn(PLT)
++	ldmfd	sp!, {pc}
++	.size gcdfn, . - gcdfn
+diff --git a/ld/testsuite/ld-arm/hideall.ld b/ld/testsuite/ld-arm/hideall.ld
+new file mode 100644
+index 0000000..077d6b5
+--- /dev/null
++++ b/ld/testsuite/ld-arm/hideall.ld
+@@ -0,0 +1 @@
++NS { local: *; };
+diff --git a/ld/testsuite/ld-arm/hidfn.s b/ld/testsuite/ld-arm/hidfn.s
+new file mode 100644
+index 0000000..a66b558
+--- /dev/null
++++ b/ld/testsuite/ld-arm/hidfn.s
+@@ -0,0 +1,7 @@
++	.text
++	.globl hidfn
++	.hidden	hidfn
++	.type hidfn, %function
++hidfn:
++	ldmfd	sp!, {pc}
++	.size hidfn, . - hidfn
+diff --git a/ld/testsuite/ld-arm/main.s b/ld/testsuite/ld-arm/main.s
+new file mode 100644
+index 0000000..046d19d
+--- /dev/null
++++ b/ld/testsuite/ld-arm/main.s
+@@ -0,0 +1,8 @@
++	.text
++	.globl _start
++	.type _start, %function
++_start:
++	str	lr, [sp, #-4]!
++	bl	hidfn(PLT)
++	ldmfd	sp!, {pc}
++	.size _start, . - _start
