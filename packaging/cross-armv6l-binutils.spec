@@ -5,6 +5,10 @@
 %define accelerator_crossbuild 0
 %define disable_nls 1
 
+%ifarch x86_64
+%define x64 x64
+%endif
+
 Summary: A GNU collection of binary utilities
 Name: cross-armv6l-binutils
 Version: 2.22
@@ -45,10 +49,10 @@ Patch17: pr_13177.patch
 %define run_testsuite 0
 %define cross %{binutils_target}-
 # single target atm.
-ExclusiveArch: %ix86
+ExclusiveArch: %ix86 x86_64
 # special handling for Tizen ARM build acceleration
-%if "%(echo %{name} | sed -e "s/cross-.*-binutils-\\(.*\\)/\\1/")" == "accel"
-%define binutils_target %(echo %{name} | sed -e "s/cross-\\(.*\\)-binutils-accel/\\1/")-tizen-linux-gnueabi
+%if "%(echo %{name} | sed -e "s/cross-.*-binutils-\\(.*\\)-.*/\\1/")" == "accel"
+%define binutils_target %(echo %{name} | sed -e "s/cross-\\(.*\\)-binutils-accel-.*/\\1/")-tizen-linux-gnueabi
 %define _prefix /usr
 %define cross ""
 %define accelerator_crossbuild 1
@@ -161,7 +165,7 @@ CFLAGS="$CFLAGS -O0 -ggdb2"
 # We could optimize the cross builds size by --enable-shared but the produced
 # binaries may be less convenient in the embedded environment.
 %if %{accelerator_crossbuild}
-export CFLAGS="$CFLAGS -Wl,-rpath,/emul/ia32-linux/usr/lib:/emul/ia32-linux/lib:/usr/lib:/lib"
+export CFLAGS="$CFLAGS -Wl,-rpath,/emul/ia32-linux/usr/%{_lib}:/emul/ia32-linux/%{_lib}:/usr/%{_lib}:/%{_lib}:/usr/lib:/lib"
 %endif
 %configure \
   --build=%{_target_platform} --host=%{_target_platform} \
@@ -315,6 +319,11 @@ cat %{?cross}bfd.lang >> %{?cross}binutils.lang
 cat %{?cross}gas.lang >> %{?cross}binutils.lang
 cat %{?cross}ld.lang >> %{?cross}binutils.lang
 cat %{?cross}gprof.lang >> %{?cross}binutils.lang
+%endif
+
+%if %{accelerator_crossbuild}
+# Fixed x86 dependencies
+sed "s/@X86@/%{!?x64:x86}%{?x64}/g" -i %{_sourcedir}/baselibs.conf
 %endif
 
 %clean
