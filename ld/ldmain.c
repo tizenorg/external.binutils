@@ -105,7 +105,7 @@ bfd_boolean add_DT_NEEDED_for_regular;
 /* True means create DT_NEEDED entries for dynamic libraries that
    are DT_NEEDED by dynamic libraries specifically mentioned on
    the command line.  */
-bfd_boolean add_DT_NEEDED_for_dynamic = TRUE;
+bfd_boolean add_DT_NEEDED_for_dynamic;
 
 /* TRUE if we should demangle symbol names.  */
 bfd_boolean demangling;
@@ -150,7 +150,8 @@ static bfd_boolean reloc_dangerous
 static bfd_boolean unattached_reloc
   (struct bfd_link_info *, const char *, bfd *, asection *, bfd_vma);
 static bfd_boolean notice
-  (struct bfd_link_info *, const char *, bfd *, asection *, bfd_vma);
+  (struct bfd_link_info *, struct bfd_link_hash_entry *,
+   bfd *, asection *, bfd_vma, flagword, const char *);
 
 static struct bfd_link_callbacks link_callbacks =
 {
@@ -296,73 +297,13 @@ main (int argc, char **argv)
   if (config.hash_table_size != 0)
     bfd_hash_set_default_size (config.hash_table_size);
 
+#ifdef ENABLE_PLUGINS
+  /* Now all the plugin arguments have been gathered, we can load them.  */
+  if (plugin_load_plugins ())
+    einfo (_("%P%F: %s: error loading plugin\n"), plugin_error_plugin ());
+#endif /* ENABLE_PLUGINS */
+
   ldemul_set_symbols ();
-
-  if (link_info.relocatable)
-    {
-      if (command_line.check_section_addresses < 0)
-	command_line.check_section_addresses = 0;
-      if (link_info.shared)
-	einfo (_("%P%F: -r and -shared may not be used together\n"));
-    }
-
-  /* We may have -Bsymbolic, -Bsymbolic-functions, --dynamic-list-data,
-     --dynamic-list-cpp-new, --dynamic-list-cpp-typeinfo and
-     --dynamic-list FILE.  -Bsymbolic and -Bsymbolic-functions are
-     for shared libraries.  -Bsymbolic overrides all others and vice
-     versa.  */
-  switch (command_line.symbolic)
-    {
-    case symbolic_unset:
-      break;
-    case symbolic:
-      /* -Bsymbolic is for shared library only.  */
-      if (link_info.shared)
-	{
-	  link_info.symbolic = TRUE;
-	  /* Should we free the unused memory?  */
-	  link_info.dynamic_list = NULL;
-	  command_line.dynamic_list = dynamic_list_unset;
-	}
-      break;
-    case symbolic_functions:
-      /* -Bsymbolic-functions is for shared library only.  */
-      if (link_info.shared)
-	command_line.dynamic_list = dynamic_list_data;
-      break;
-    }
-
-  switch (command_line.dynamic_list)
-    {
-    case dynamic_list_unset:
-      break;
-    case dynamic_list_data:
-      link_info.dynamic_data = TRUE;
-    case dynamic_list:
-      link_info.dynamic = TRUE;
-      break;
-    }
-
-  if (! link_info.shared)
-    {
-      if (command_line.filter_shlib)
-	einfo (_("%P%F: -F may not be used without -shared\n"));
-      if (command_line.auxiliary_filters)
-	einfo (_("%P%F: -f may not be used without -shared\n"));
-    }
-
-  if (! link_info.shared || link_info.pie)
-    link_info.executable = TRUE;
-
-  /* Treat ld -r -s as ld -r -S -x (i.e., strip all local symbols).  I
-     don't see how else this can be handled, since in this case we
-     must preserve all externally visible symbols.  */
-  if (link_info.relocatable && link_info.strip == strip_all)
-    {
-      link_info.strip = strip_debugger;
-      if (link_info.discard == discard_sec_merge)
-	link_info.discard = discard_all;
-    }
 
   /* If we have not already opened and parsed a linker script,
      try the default script from command line first.  */
@@ -426,11 +367,14 @@ main (int argc, char **argv)
       info_msg ("\n==================================================\n");
     }
 
+  if (command_line.print_output_format)
+    info_msg ("%s\n", lang_get_output_target ());
+
   lang_final ();
 
   if (!lang_has_input_file)
     {
-      if (version_printed)
+      if (version_printed || command_line.print_output_format)
 	xexit (0);
       einfo (_("%P%F: no input files\n"));
     }
@@ -487,7 +431,7 @@ main (int argc, char **argv)
 	einfo (_("%P: link errors found, deleting executable `%s'\n"),
 	       output_filename);
 
-      /* The file will be removed by remove_output.  */
+      /* The file will be removed by ld_cleanup.  */
       xexit (1);
     }
   else
@@ -560,7 +504,7 @@ main (int argc, char **argv)
       fflush (stderr);
     }
 
-  /* Prevent remove_output from doing anything, after a successful link.  */
+  /* Prevent ld_cleanup from doing anything, after a successful link.  */
   output_filename = NULL;
 
   xexit (0);
@@ -804,12 +748,12 @@ add_archive_element (struct bfd_link_info *info,
      BFD, but we still want to output the original BFD filename.  */
   orig_input = *input;
 #ifdef ENABLE_PLUGINS
-  if (bfd_my_archive (abfd) != NULL
-      && plugin_active_plugins_p ()
-      && !no_more_claiming)
+  if (plugin_active_plugins_p () && !no_more_claiming)
     {
       /* We must offer this archive member to the plugins to claim.  */
-      int fd = open (bfd_my_archive (abfd)->filename, O_RDONLY | O_BINARY);
+      const char *filename = (bfd_my_archive (abfd) != NULL
+			      ? bfd_my_archive (abfd)->filename : abfd->filename);
+      int fd = open (filename, O_RDONLY | O_BINARY);
       if (fd >= 0)
 	{
 	  struct ld_plugin_input_file file;
@@ -818,7 +762,7 @@ add_archive_element (struct bfd_link_info *info,
 	     member, not the whole file, and must exclude the header.
 	     Fortunately for us, that is how the data is stored in the
 	     origin field of the bfd and in the arelt_data.  */
-	  file.name = bfd_my_archive (abfd)->filename;
+	  file.name = filename;
 	  file.offset = abfd->origin;
 	  file.filesize = arelt_size (abfd);
 	  file.fd = fd;
@@ -1398,7 +1342,7 @@ reloc_overflow (struct bfd_link_info *info ATTRIBUTE_UNUSED,
   if (overflow_cutoff_limit == -1)
     return TRUE;
 
-  einfo ("%X%C:", abfd, section, address);
+  einfo ("%X%H:", abfd, section, address);
 
   if (overflow_cutoff_limit >= 0
       && overflow_cutoff_limit-- == 0)
@@ -1450,7 +1394,7 @@ reloc_dangerous (struct bfd_link_info *info ATTRIBUTE_UNUSED,
 		 asection *section,
 		 bfd_vma address)
 {
-  einfo (_("%X%C: dangerous relocation: %s\n"),
+  einfo (_("%X%H: dangerous relocation: %s\n"),
 	 abfd, section, address, message);
   return TRUE;
 }
@@ -1465,7 +1409,7 @@ unattached_reloc (struct bfd_link_info *info ATTRIBUTE_UNUSED,
 		  asection *section,
 		  bfd_vma address)
 {
-  einfo (_("%X%C: reloc refers to symbol `%T' which is not being output\n"),
+  einfo (_("%X%H: reloc refers to symbol `%T' which is not being output\n"),
 	 abfd, section, address, name);
   return TRUE;
 }
@@ -1479,18 +1423,23 @@ unattached_reloc (struct bfd_link_info *info ATTRIBUTE_UNUSED,
 
 static bfd_boolean
 notice (struct bfd_link_info *info,
-	const char *name,
+	struct bfd_link_hash_entry *h,
 	bfd *abfd,
 	asection *section,
-	bfd_vma value)
+	bfd_vma value,
+	flagword flags ATTRIBUTE_UNUSED,
+	const char *string ATTRIBUTE_UNUSED)
 {
-  if (name == NULL)
+  const char *name;
+
+  if (h == NULL)
     {
       if (command_line.cref || nocrossref_list != NULL)
 	return handle_asneeded_cref (abfd, (enum notice_asneeded_action) value);
       return TRUE;
     }
 
+  name = h->root.string;
   if (info->notice_hash != NULL
       && bfd_hash_lookup (info->notice_hash, name, FALSE, FALSE) != NULL)
     {

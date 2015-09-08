@@ -295,14 +295,14 @@ proc default_ld_compile { cc source object } {
 
 # Assemble a file.
 #
-proc default_ld_assemble { as source object } {
+proc default_ld_assemble { as in_flags source object } {
     global ASFLAGS
     global host_triplet
 
     if ![info exists ASFLAGS] { set ASFLAGS "" }
 
     set flags [big_or_little_endian]
-    set exec_output [run_host_cmd "$as" "$flags $ASFLAGS -o $object $source"]
+    set exec_output [run_host_cmd "$as" "$flags $in_flags $ASFLAGS -o $object $source"]
     set exec_output [prune_warnings $exec_output]
     if [string match "" $exec_output] then {
 	return 1
@@ -552,7 +552,6 @@ proc run_dump_test { name } {
     set opts(error) {}
     set opts(warning) {}
     set opts(objcopy_linked_file) {}
-    set asflags(${file}.s) {}
 
     foreach i $opt_array {
 	set opt_name [lindex $i 0]
@@ -570,13 +569,13 @@ proc run_dump_test { name } {
 	    warning {}
 	    error {}
 	    source {
-		# Move any source-specific as-flags to a separate array to
+		# Move any source-specific as-flags to a separate list to
 		# simplify processing.
 		if { [llength $opt_val] > 1 } {
-		    set asflags([lindex $opt_val 0]) [lrange $opt_val 1 end]
+		    lappend asflags [lrange $opt_val 1 end]
 		    set opt_val [lindex $opt_val 0]
 		} else {
-		    set asflags($opt_val) {}
+		    lappend asflags {}
 		}
 	    }
 	    default {
@@ -669,6 +668,7 @@ proc run_dump_test { name } {
 
     if { $opts(source) == "" } {
 	set sourcefiles [list ${file}.s]
+	set asflags [list ""]
     } else {
 	set sourcefiles {}
 	foreach sf $opts(source) {
@@ -677,8 +677,6 @@ proc run_dump_test { name } {
 	    } else {
 		lappend sourcefiles "$srcdir/$subdir/$sf"
 	    }
-	    # Must have asflags indexed on source name.
-	    set asflags($srcdir/$subdir/$sf) $asflags($sf)
 	}
     }
 
@@ -691,11 +689,12 @@ proc run_dump_test { name } {
     set objfiles {}
     for { set i 0 } { $i < [llength $sourcefiles] } { incr i } {
 	set sourcefile [lindex $sourcefiles $i]
+	set sourceasflags [lindex $asflags $i]
 
 	set objfile "tmpdir/dump$i.o"
 	catch "exec rm -f $objfile" exec_output
 	lappend objfiles $objfile
-	set cmd "$AS $ASFLAGS $opts(as) $asflags($sourcefile) -o $objfile $sourcefile"
+	set cmd "$AS $ASFLAGS $opts(as) $sourceasflags -o $objfile $sourcefile"
 
 	send_log "$cmd\n"
 	set cmdret [remote_exec host [concat sh -c [list "$cmd 2>&1"]] "" "/dev/null" "ld.tmp"]
@@ -903,18 +902,24 @@ proc ar_simple_create { ar aropts target objects } {
 
 # List contains test-items with 3 items followed by 2 lists, one item and
 # one optional item:
-# 0:name 1:ld/ar options 2:assembler options
-# 3:filenames of assembler files 4: action and options. 5: name of output file
-# 6:compiler flags (optional)
+#  0:name
+#  1:ld/ar options
+#  2:assembler options
+#  3:filenames of assembler files
+#  4:list of actions, options and expected outputs.
+#  5:name of output file
+#  6:compiler flags (optional)
 #
-# Actions:
-# objdump: Apply objdump options on result.  Compare with regex (last arg).
-# nm: Apply nm options on result.  Compare with regex (last arg).
-# readelf: Apply readelf options on result.  Compare with regex (last arg).
-# ld: Don't apply anything on result.  Compare output during linking with 
-#     regex (second arg).  Note that this *must* be the first action if it
-#     is to be used at all; in all other cases, any output from the linker
-#     during linking is treated as a sign of an error and FAILs the test.
+# Actions: { command command-line-options file-containg-expected-output-regexps }
+# Commands:
+#   objdump: Apply objdump options on result.
+#   nm: Apply nm options on result.
+#   readelf: Apply readelf options on result.
+#   ld: Don't apply anything on result.  Compare output during linking with 
+#     the file containing regexps (which is the second arg, not the third).
+#     Note that this *must* be the first action if it is to be used at all;
+#     in all other cases, any output from the linker during linking is
+#     treated as a sign of an error and FAILs the test.
 #
 proc run_ld_link_tests { ldtests } {
     global ld
@@ -978,26 +983,21 @@ proc run_ld_link_tests { ldtests } {
 	}
 
 	# Catch assembler errors.
-	if { $is_unresolved != 0 } {
+	if { $is_unresolved } {
 	    unresolved $testname
 	    continue
 	}
 
 	if { [regexp ".*\\.a$" $binfile] } {
 	    if { ![ar_simple_create $ar $ld_options $binfile "$objfiles"] } {
-		fail $testname
 		set failed 1
-	    } else {
-		set failed 0
 	    }
 	} elseif { ![ld_simple_link $ld $binfile "-L$srcdir/$subdir $ld_options $objfiles"] } {
 	    set maybe_failed 1
 	    set ld_output "$exec_output"
-	} else {
-	    set failed 0
 	}
 
-	if { $failed == 0 } {
+	if { !$failed } {
 	    foreach actionlist $actions {
 		set action [lindex $actionlist 0]
 		set progopts [lindex $actionlist 1]
@@ -1024,20 +1024,17 @@ proc run_ld_link_tests { ldtests } {
 		    }
 
 		if { $action == "ld" } {
-		    set dumpfile [lindex $actionlist 1]
-		    verbose "dumpfile is $dumpfile"
+		    set regexpfile $progopts
+		    verbose "regexpfile is $srcdir/$subdir/$regexpfile"
 		    set_file_contents "tmpdir/ld.messages" "$ld_output"
 		    verbose "ld.messages has '[file_contents tmpdir/ld.messages]'"
-		    if { [regexp_diff "tmpdir/ld.messages" "$srcdir/$subdir/$dumpfile"] } then {
+		    if { [regexp_diff "tmpdir/ld.messages" "$srcdir/$subdir/$regexpfile"] } then {
 			verbose "output is $ld_output" 2
 			set failed 1
 			break
 		    }
 		    set maybe_failed 0
-		} elseif { $maybe_failed != 0 } {
-		    set failed 1
-		    break
-		} elseif { $dump_prog != "" } {
+		} elseif { !$maybe_failed && $dump_prog != "" } {
 		    set dumpfile [lindex $actionlist 2]
 		    set binary $dump_prog
 
@@ -1079,18 +1076,14 @@ proc run_ld_link_tests { ldtests } {
 		    remote_file host delete "dump.out"
 		}
 	    }
-
-	    if { $failed != 0 } {
-		fail $testname
-	    } else { if { $is_unresolved == 0 } {
-		pass $testname
-	    } }
 	}
 
-	# Catch action errors.
-	if { $is_unresolved != 0 } {
+	if { $is_unresolved } {
 	    unresolved $testname
-	    continue
+	} elseif { $maybe_failed || $failed } {
+	    fail $testname
+	} else {
+	    pass $testname
 	}
     }
 }
@@ -1255,6 +1248,7 @@ proc run_ld_link_exec_tests { targets_to_xfail ldtests } {
 #  4:action and options.
 #  5:name of output file
 #  6:language (optional)
+#  7:linker warnings (optional)
 #
 # Actions:
 # objdump: Apply objdump options on result.  Compare with regex (last arg).
@@ -1273,6 +1267,7 @@ proc run_cc_link_tests { ldtests } {
     global CFLAGS
     global CXXFLAGS
     global ar
+    global exec_output
 
     foreach testitem $ldtests {
 	set testname [lindex $testitem 0]
@@ -1282,6 +1277,7 @@ proc run_cc_link_tests { ldtests } {
 	set actions [lindex $testitem 4]
 	set binfile tmpdir/[lindex $testitem 5]
 	set lang [lindex $testitem 6]
+	set warnings [lindex $testitem 7]
 	set objfiles {}
 	set is_unresolved 0
 	set failed 0
@@ -1318,8 +1314,18 @@ proc run_cc_link_tests { ldtests } {
 		set failed 0
 	    }
 	} elseif { ![ld_simple_link $cc_cmd $binfile "-L$srcdir/$subdir $ldflags $objfiles"] } {
-	    fail $testname
-	    set failed 1
+	    # Check if exec_output is expected.
+	    if { $warnings != "" } then {
+		verbose -log "returned with: <$exec_output>, expected: <$warnings>"
+		if { [regexp $warnings $exec_output] } then {
+		    set failed 0
+		} else {
+		    set failed 1
+		}
+	    } else {
+		fail $testname
+		set failed 1
+	    }
 	} else {
 	    set failed 0
 	}

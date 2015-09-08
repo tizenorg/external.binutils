@@ -1,3 +1,22 @@
+2011-08-26  Nick Clifton  <nickc@redhat.com>
+
+	* po/es.po: Updated Spanish translation.
+
+2011-06-07  David Warme  <dwarme@groupw.com>
+
+	* corefile.c (core_sym_class): Allow for multiple iterations of
+	clone clones and subprograms.
+
+2011-04-28  Jonathan Nieder  <jrnieder@gmail.com>
+
+	* cg_print.c (print_header): Add no-c-format comment to prevent
+	confusion when translating "%time".
+
+2011-04-27  Nick Clifton  <nickc@redhat.com>
+
+	* po/eo.po: Updated Esperanto translation.
+	* po/fr.po: Updated French translation.
+
 2011-03-30  Nick Clifton  <nickc@redhat.com>
 
 	* po/eo.po: New Esperanto translation.

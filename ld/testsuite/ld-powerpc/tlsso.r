@@ -18,7 +18,6 @@ Section Headers:
  +\[[ 0-9]+\] \.tdata +PROGBITS .* 0+38 0+ WAT +0 +0 +8
  +\[[ 0-9]+\] \.tbss +NOBITS .* 0+38 0+ WAT +0 +0 +8
  +\[[ 0-9]+\] \.dynamic .*
- +\[[ 0-9]+\] \.branch_lt .*
  +\[[ 0-9]+\] \.got .*
  +\[[ 0-9]+\] \.plt .*
  +\[[ 0-9]+\] \.shstrtab .*
@@ -40,7 +39,7 @@ Program Headers:
  Section to Segment mapping:
  +Segment Sections\.\.\.
  +0+ +\.hash \.dynsym \.dynstr \.rela\.dyn \.rela\.plt \.text 
- +01 +\.tdata \.dynamic (\.branch_lt |)\.got \.plt 
+ +01 +\.tdata \.dynamic .got \.plt 
  +02 +\.dynamic 
  +03 +\.tdata \.tbss 
 
@@ -49,9 +48,9 @@ Relocation section '\.rela\.dyn' at offset .* contains 16 entries:
 [0-9a-f ]+R_PPC64_TPREL16 +0+60 le0 \+ 0
 [0-9a-f ]+R_PPC64_TPREL16_HA +0+68 le1 \+ 0
 [0-9a-f ]+R_PPC64_TPREL16_LO +0+68 le1 \+ 0
-[0-9a-f ]+R_PPC64_TPREL16_DS +0+105f0 \.tdata \+ 28
-[0-9a-f ]+R_PPC64_TPREL16_HA +0+105f0 \.tdata \+ 30
-[0-9a-f ]+R_PPC64_TPREL16_LO +0+105f0 \.tdata \+ 30
+[0-9a-f ]+R_PPC64_TPREL16_DS +0+105f8 \.tdata \+ 28
+[0-9a-f ]+R_PPC64_TPREL16_HA +0+105f8 \.tdata \+ 30
+[0-9a-f ]+R_PPC64_TPREL16_LO +0+105f8 \.tdata \+ 30
 [0-9a-f ]+R_PPC64_DTPMOD64 +0+
 [0-9a-f ]+R_PPC64_DTPREL64 +0+
 [0-9a-f ]+R_PPC64_DTPREL64 +0+18
@@ -101,7 +100,6 @@ Symbol table '\.symtab' contains [0-9]+ entries:
 .* SECTION +LOCAL +DEFAULT +9 
 .* SECTION +LOCAL +DEFAULT +10 
 .* SECTION +LOCAL +DEFAULT +11 
-.* SECTION +LOCAL +DEFAULT +12 
 .* TLS +LOCAL +DEFAULT +7 gd4
 .* TLS +LOCAL +DEFAULT +7 ld4
 .* TLS +LOCAL +DEFAULT +7 ld5

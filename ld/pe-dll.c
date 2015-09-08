@@ -1,6 +1,6 @@
 /* Routines to help build PEI-format DLLs (Win32 etc)
    Copyright 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
-   2008, 2009, 2010 Free Software Foundation, Inc.
+   2008, 2009, 2010, 2011 Free Software Foundation, Inc.
    Written by DJ Delorie <dj@cygnus.com>
 
    This file is part of the GNU Binutils.
@@ -718,13 +718,10 @@ process_def_file_and_drectve (bfd *abfd ATTRIBUTE_UNUSED, struct bfd_link_info *
 	      bfd_boolean would_export = symbols[j]->section != &bfd_und_section
 		      && ((symbols[j]->flags & BSF_GLOBAL)
 			  || (symbols[j]->flags == 0));
-	      if (lang_elf_version_info && would_export)
-		{
-		  bfd_boolean hide = 0;
-		  (void) bfd_find_version_for_sym (lang_elf_version_info,
-				symbols[j]->name, &hide);
-		  would_export = !hide;
-		}
+	      if (link_info.version_info && would_export)
+		  would_export
+		    = !bfd_hide_sym_by_version (link_info.version_info,
+						symbols[j]->name);
 	      if (would_export)
 		{
 		  const char *sn = symbols[j]->name;
@@ -1396,6 +1393,15 @@ generate_reloc (bfd *abfd, struct bfd_link_info *info)
 			    continue;
 			}
 		      else if (!blhe || blhe->type != bfd_link_hash_defined)
+			continue;
+		    }
+		  /* Nor for Dwarf FDE references to discarded sections.  */
+		  else if (bfd_is_abs_section (sym->section->output_section))
+		    {
+		      /* We only ignore relocs from .eh_frame sections, as
+			 they are discarded by the final link rather than
+			 resolved against the kept section.  */
+		      if (!strcmp (s->name, ".eh_frame"))
 			continue;
 		    }
 
@@ -3232,7 +3238,7 @@ pe_dll_fill_sections (bfd *abfd, struct bfd_link_info *info)
       ldemul_after_allocation ();
 
       /* Do the assignments again.  */
-      lang_do_assignments ();
+      lang_do_assignments (lang_final_phase_enum);
     }
 
   fill_edata (abfd, info);
@@ -3264,7 +3270,7 @@ pe_exe_fill_sections (bfd *abfd, struct bfd_link_info *info)
       ldemul_after_allocation ();
 
       /* Do the assignments again.  */
-      lang_do_assignments ();
+      lang_do_assignments (lang_final_phase_enum);
     }
   reloc_s->contents = reloc_d;
 }

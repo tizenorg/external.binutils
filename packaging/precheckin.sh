@@ -2,7 +2,7 @@
 
 NAME=binutils
 SPECNAME=${NAME}.spec
-ARCHES="armv5tel armv7l armv7hl armv7nhl"
+ARCHES="armv5tel armv6l armv7l armv7hl armv7nhl mipsel"
 TOBASELIBS=""
 TOBASELIBS_ARCH=""
 
@@ -15,16 +15,19 @@ echo -n "arch i586 targets " > baselibs.conf
 for i in ${ARCHES} ; do
 # cross spec files
     cat ./${SPECNAME} | sed -e "s#Name: .*#Name: cross-${i}-${NAME}#" > ./cross-${i}-${NAME}.spec
-    cat ./${SPECNAME} | sed -e "s#Name: .*#Name: cross-${i}-${NAME}-accel#" > ./cross-${i}-${NAME}-accel.spec
+    cat ./${SPECNAME} | sed -e "s#Name: .*#Name: cross-${i}-${NAME}-accel-%{!?x64:x86}%{?x64}#" > ./cross-${i}-${NAME}-accel.spec
 # baselibs.conf - part 2
     test ! x"$i" = x"" && echo -n "${i}:${i} " >> baselibs.conf
 done
+
+echo "" >> baselibs.conf
+cat baselibs.conf | sed -e "s/i586/x86_64/" >> baselibs.conf
 
 # baselibs.conf - part 3
 echo "" >> baselibs.conf
 for i in ${ARCHES} ; do
 echo "" >> baselibs.conf
-echo "cross-${i}-${NAME}-accel
+echo "cross-${i}-${NAME}-accel-@X86@
   targettype x86 block!
   targettype 32bit block!" >> baselibs.conf
 for j in ${ARCHES//${i}} ; do
@@ -34,8 +37,10 @@ cat >> baselibs.conf << EOF
 
   targettype ${i} autoreqprov off
   targettype ${i} provides "cross-arm-binutils-accel"
-  targettype ${i} requires "glibc-x86-arm"
-  targettype ${i} requires "zlib-x86-arm"
+  targettype ${i} provides "cross-${i}-binutils-accel-${i}"
+  targettype ${i} requires "cross-arm-gcc-accel"
+  targettype ${i} requires "eglibc-@X86@-arm"
+  targettype ${i} requires "zlib-@X86@-arm"
   targettype ${i} requires "binutils"
   targettype ${i} prefix /emul/ia32-linux
   targettype ${i} extension -arm
@@ -44,25 +49,35 @@ cat >> baselibs.conf << EOF
   targettype ${i} -/usr/share/doc
   targettype ${i} requires "tizen-accelerator"
 
-
-
-  targettype ${i} post " for bin in addr2line ar as c++filt gprov ld nm objcopy objdump ranlib readelf size strings strip ; do"
+  targettype ${i} post "#set -x"
+  targettype ${i} post " export GCCVER=\$(LANG=C gcc --version | head -1 | cut -d" " -f5) "
+  targettype ${i} post " for bin in addr2line ar as c++filt elfedit gprof ld ld.bfd ld.gold nm objcopy objdump ranlib readelf size strings strip ; do"
   targettype ${i} post "   binary="/usr/bin/\${bin}" "
-  targettype ${i} post "   if test -e \${binary} -a ! -e \${binary}.orig-arm ; then"
-  targettype ${i} post "     mv \${binary} \${binary}.orig-arm && ln -s <prefix>\${binary} \${binary}"
-  targettype ${i} post "   else "
+  targettype ${i} post "   if test -L \${binary} -a -e \${binary}.orig-arm ; then"
   targettype ${i} post "     echo "\${binary} not installed or \${binary}.orig-arm already present !" "
+  targettype ${i} post "   else "
+  targettype ${i} post "     mv \${binary} \${binary}.orig-arm && ln -s <prefix>\${binary} \${binary}"
+  targettype ${i} post "     ln -s \${binary} /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/\${bin}"
   targettype ${i} post "   fi "
   targettype ${i} post " done "
+  targettype ${i} post " ln -sf /usr/bin/ld /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld"
+  targettype ${i} post " ln -sf /usr/bin/ld.bfd /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld.bfd"
+  targettype ${i} post " ln -sf /usr/bin/ld.gold /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld.gold"
 
-  targettype ${i} preun " for bin in addr2line ar as c++filt gprov ld nm objcopy objdump ranlib readelf size strings strip ; do"
+  targettype ${i} preun " set -x"
+  targettype ${i} preun " export GCCVER=\$(LANG=C gcc --version | head -1 | cut -d" " -f5) "
+  targettype ${i} preun " for bin in addr2line ar as c++filt elfedit gprof ld ld.bfd ld.gold nm objcopy objdump ranlib readelf size strings strip ; do"
   targettype ${i} preun "   binary="/usr/bin/\${bin}" "
   targettype ${i} preun "   if test -e \${binary}.orig-arm ; then"
   targettype ${i} preun "     rm \${binary} && mv \${binary}.orig-arm \${binary}"
+  targettype ${i} preun "     rm /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/\${bin}"
   targettype ${i} preun "   else "
   targettype ${i} preun "     echo "\${binary}.orig-arm not present !" "
   targettype ${i} preun "   fi "
   targettype ${i} preun " done "
+  targettype ${i} preun " rm -f /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld"
+  targettype ${i} preun " rm -f /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld.bfd"
+  targettype ${i} preun " rm -f /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld.gold"
 
 EOF
 

@@ -1,6 +1,6 @@
 /* Parse options for the GNU linker.
    Copyright 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
+   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2011
    Free Software Foundation, Inc.
 
    This file is part of the GNU Binutils.
@@ -175,6 +175,7 @@ enum option_values
   OPTION_PLUGIN_OPT,
 #endif /* ENABLE_PLUGINS */
   OPTION_DEFAULT_SCRIPT,
+  OPTION_PRINT_OUTPUT_FORMAT,
 };
 
 /* The long options.  This structure is used for both the option
@@ -454,7 +455,7 @@ static const struct ld_option ld_options[] =
     '\0', NULL, N_("Do not allow unresolved references in object files"),
     TWO_DASHES },
   { {"allow-shlib-undefined", no_argument, NULL, OPTION_ALLOW_SHLIB_UNDEFINED},
-    '\0', NULL, N_("Allow unresolved references in shared libaries"),
+    '\0', NULL, N_("Allow unresolved references in shared libraries"),
     TWO_DASHES },
   { {"no-allow-shlib-undefined", no_argument, NULL,
      OPTION_NO_ALLOW_SHLIB_UNDEFINED},
@@ -491,6 +492,8 @@ static const struct ld_option ld_options[] =
   { {"oformat", required_argument, NULL, OPTION_OFORMAT},
     '\0', N_("TARGET"), N_("Specify target of output file"),
     EXACTLY_TWO_DASHES },
+  { {"print-output-format", no_argument, NULL, OPTION_PRINT_OUTPUT_FORMAT},
+    '\0', NULL, N_("Print default output format"), TWO_DASHES },
   { {"qmagic", no_argument, NULL, OPTION_IGNORE},
     '\0', NULL, N_("Ignored for Linux compatibility"), ONE_DASH },
   { {"reduce-memory-overheads", no_argument, NULL,
@@ -1059,6 +1062,9 @@ parse_args (unsigned argc, char **argv)
 	case OPTION_OFORMAT:
 	  lang_add_output_format (optarg, NULL, NULL, 0);
 	  break;
+	case OPTION_PRINT_OUTPUT_FORMAT:
+	  command_line.print_output_format = TRUE;
+	  break;
 #ifdef ENABLE_PLUGINS
 	case OPTION_PLUGIN:
 	  if (plugin_opt_plugin (optarg))
@@ -1558,11 +1564,71 @@ parse_args (unsigned argc, char **argv)
     /* FIXME: Should we allow emulations a chance to set this ?  */
     link_info.unresolved_syms_in_shared_libs = how_to_report_unresolved_symbols;
 
-#ifdef ENABLE_PLUGINS
-  /* Now all the plugin arguments have been gathered, we can load them.  */
-  if (plugin_load_plugins ())
-    einfo (_("%P%F: %s: error loading plugin\n"), plugin_error_plugin ());
-#endif /* ENABLE_PLUGINS */
+  if (link_info.relocatable)
+    {
+      if (command_line.check_section_addresses < 0)
+	command_line.check_section_addresses = 0;
+      if (link_info.shared)
+	einfo (_("%P%F: -r and -shared may not be used together\n"));
+    }
+
+  /* We may have -Bsymbolic, -Bsymbolic-functions, --dynamic-list-data,
+     --dynamic-list-cpp-new, --dynamic-list-cpp-typeinfo and
+     --dynamic-list FILE.  -Bsymbolic and -Bsymbolic-functions are
+     for shared libraries.  -Bsymbolic overrides all others and vice
+     versa.  */
+  switch (command_line.symbolic)
+    {
+    case symbolic_unset:
+      break;
+    case symbolic:
+      /* -Bsymbolic is for shared library only.  */
+      if (link_info.shared)
+	{
+	  link_info.symbolic = TRUE;
+	  /* Should we free the unused memory?  */
+	  link_info.dynamic_list = NULL;
+	  command_line.dynamic_list = dynamic_list_unset;
+	}
+      break;
+    case symbolic_functions:
+      /* -Bsymbolic-functions is for shared library only.  */
+      if (link_info.shared)
+	command_line.dynamic_list = dynamic_list_data;
+      break;
+    }
+
+  switch (command_line.dynamic_list)
+    {
+    case dynamic_list_unset:
+      break;
+    case dynamic_list_data:
+      link_info.dynamic_data = TRUE;
+    case dynamic_list:
+      link_info.dynamic = TRUE;
+      break;
+    }
+
+  if (! link_info.shared)
+    {
+      if (command_line.filter_shlib)
+	einfo (_("%P%F: -F may not be used without -shared\n"));
+      if (command_line.auxiliary_filters)
+	einfo (_("%P%F: -f may not be used without -shared\n"));
+    }
+
+  if (! link_info.shared || link_info.pie)
+    link_info.executable = TRUE;
+
+  /* Treat ld -r -s as ld -r -S -x (i.e., strip all local symbols).  I
+     don't see how else this can be handled, since in this case we
+     must preserve all externally visible symbols.  */
+  if (link_info.relocatable && link_info.strip == strip_all)
+    {
+      link_info.strip = strip_debugger;
+      if (link_info.discard == discard_sec_merge)
+	link_info.discard = discard_all;
+    }
 }
 
 /* Add the (colon-separated) elements of DIRLIST_PTR to the
