@@ -1,6 +1,6 @@
 /* TILEPro opcode information.
  *
- *    Copyright 2011 Free Software Foundation, Inc.
+ *    Copyright (C) 2011-2014 Free Software Foundation, Inc.
  *
  *    This program is free software; you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -36,6 +36,8 @@ typedef enum
   TILEPRO_OPC_INFOL,
   TILEPRO_OPC_J,
   TILEPRO_OPC_JAL,
+  TILEPRO_OPC_LW_TLS,
+  TILEPRO_OPC_LW_TLS_SN,
   TILEPRO_OPC_MOVE,
   TILEPRO_OPC_MOVE_SN,
   TILEPRO_OPC_MOVEI,

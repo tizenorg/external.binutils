@@ -1,9 +1,21 @@
 # Linker script for Alpha VMS systems.
 # Tristan Gingold <gingold@adacore.com>.
+#
+# Copyright (C) 2014 Free Software Foundation, Inc.
+# 
+# Copying and distribution of this file, with or without modification,
+# are permitted in any medium without royalty provided the copyright
+# notice and this notice are preserved.
 
 PAGESIZE=0x10000
 
 cat <<EOF
+/* Copyright (C) 2014 Free Software Foundation, Inc.
+
+   Copying and distribution of this script, with or without modification,
+   are permitted in any medium without royalty provided the copyright
+   notice and this notice are preserved.  */
+
 OUTPUT_FORMAT("${OUTPUT_FORMAT}")
 ${LIB_SEARCH_DIRS}
 
@@ -62,6 +74,8 @@ SECTIONS
     *(debug_loc)
     \$dwarf2.debug_macinfo = .;
     *(debug_macinfo)
+    \$dwarf2.debug_macro = .;
+    *(debug_macro)
     \$dwarf2.debug_pubnames = .;
     *(debug_pubnames)
     \$dwarf2.debug_str = .;

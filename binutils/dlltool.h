@@ -1,5 +1,5 @@
 /* dlltool.h -- header file for dlltool
-   Copyright 1997, 1998, 2003, 2004, 2005, 2007 Free Software Foundation, Inc.
+   Copyright (C) 1997-2014 Free Software Foundation, Inc.
 
    This file is part of GNU Binutils.
 
@@ -17,9 +17,6 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
    02110-1301, USA.  */
-
-#include "ansidecl.h"
-#include <stdio.h>
 
 extern void def_code (int);
 extern void def_data (int);

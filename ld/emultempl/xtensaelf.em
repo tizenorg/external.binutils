@@ -1,6 +1,5 @@
 # This shell script emits a C file. -*- C -*-
-#   Copyright 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
-#   Free Software Foundation, Inc.
+#   Copyright (C) 2003-2014 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -1311,7 +1310,7 @@ is_inconsistent_linkonce_section (asection *sec)
      for Tensilica's XCC compiler.  */
   name = sec_name + linkonce_len;
   if (CONST_STRNEQ (name, "prop."))
-    name = strchr (name + 5, '.') + 1;
+    name = strchr (name + 5, '.') ? strchr (name + 5, '.') + 1 : name + 5;
   else if (name[1] == '.'
 	   && (name[0] == 'p' || name[0] == 'e' || name[0] == 'h'))
     name += 2;
@@ -1887,7 +1886,7 @@ ld_xtensa_insert_page_offsets (bfd_vma dot,
 		etree_type *name_op = exp_nameop (NAME, ".");
 		etree_type *addend_op = exp_intop (1 << xtensa_page_power);
 		etree_type *add_op = exp_binop ('+', name_op, addend_op);
-		etree_type *assign_op = exp_assign (".", add_op);
+		etree_type *assign_op = exp_assign (".", add_op, FALSE);
 
 		lang_assignment_statement_type *assign_stmt;
 		lang_statement_union_type *assign_union;

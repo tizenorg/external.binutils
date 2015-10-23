@@ -8,13 +8,13 @@ MAXPAGESIZE="CONSTANT (MAXPAGESIZE)"
 COMMONPAGESIZE="CONSTANT (COMMONPAGESIZE)"
 ARCH="i386:x64-32"
 MACHINE=
-NOP=0x90909090
 TEMPLATE_NAME=elf32
 GENERATE_SHLIB_SCRIPT=yes
 GENERATE_PIE_SCRIPT=yes
 NO_SMALL_DATA=yes
 LARGE_SECTIONS=yes
-SEPARATE_GOTPLT=24
+LARGE_BSS_AFTER_BSS=
+SEPARATE_GOTPLT="SIZEOF (.got.plt) >= 24 ? 24 : 0"
 IREL_IN_PLT=
 
 if [ "x${host}" = "x${target}" ]; then
@@ -29,8 +29,13 @@ fi
 case "$target" in
   x86_64*-linux*|i[3-7]86-*-linux-*)
     case "$EMULATION_NAME" in
-      *32*) LIBPATH_SUFFIX=x32 ;;
-      *64*) LIBPATH_SUFFIX=64 ;;
+      *32*)
+        LIBPATH_SUFFIX=x32
+	LIBPATH_SUFFIX_SKIP=64
+	;;
+      *64*)
+        LIBPATH_SUFFIX=64
+	;;
     esac
     ;;
 esac

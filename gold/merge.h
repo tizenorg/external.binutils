@@ -1,6 +1,6 @@
 // merge.h -- handle section merging for gold  -*- C++ -*-
 
-// Copyright 2006, 2007, 2008, 2010 Free Software Foundation, Inc.
+// Copyright (C) 2006-2014 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -461,10 +461,9 @@ class Output_merge_string : public Output_merge_base
 {
  public:
   Output_merge_string(uint64_t addralign)
-    : Output_merge_base(sizeof(Char_type), addralign), stringpool_(),
+    : Output_merge_base(sizeof(Char_type), addralign), stringpool_(addralign),
       merged_strings_lists_(), input_count_(0), input_size_(0)
   {
-    gold_assert(addralign <= sizeof(Char_type));
     this->stringpool_.set_no_zero_null();
   }
 

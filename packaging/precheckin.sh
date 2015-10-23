@@ -2,7 +2,7 @@
 
 NAME=binutils
 SPECNAME=${NAME}.spec
-ARCHES="armv5tel armv6l armv7l armv7hl armv7nhl mipsel"
+ARCHES="armv7l"
 TOBASELIBS=""
 TOBASELIBS_ARCH=""
 
@@ -39,7 +39,7 @@ cat >> baselibs.conf << EOF
   targettype ${i} provides "cross-arm-binutils-accel"
   targettype ${i} provides "cross-${i}-binutils-accel-${i}"
   targettype ${i} requires "cross-arm-gcc-accel"
-  targettype ${i} requires "eglibc-@X86@-arm"
+  targettype ${i} requires "glibc-@X86@-arm"
   targettype ${i} requires "zlib-@X86@-arm"
   targettype ${i} requires "binutils"
   targettype ${i} prefix /emul/ia32-linux
@@ -50,7 +50,7 @@ cat >> baselibs.conf << EOF
   targettype ${i} requires "tizen-accelerator"
 
   targettype ${i} post "#set -x"
-  targettype ${i} post " export GCCVER=\$(LANG=C gcc --version | head -1 | cut -d" " -f5) "
+  targettype ${i} post " export GCCVER=\$(LANG=C gcc -dumpversion) "
   targettype ${i} post " for bin in addr2line ar as c++filt elfedit gprof ld ld.bfd ld.gold nm objcopy objdump ranlib readelf size strings strip ; do"
   targettype ${i} post "   binary="/usr/bin/\${bin}" "
   targettype ${i} post "   if test -L \${binary} -a -e \${binary}.orig-arm ; then"
@@ -65,7 +65,7 @@ cat >> baselibs.conf << EOF
   targettype ${i} post " ln -sf /usr/bin/ld.gold /usr/lib/gcc/${i}-tizen-linux-gnueabi/\${GCCVER}/ld.gold"
 
   targettype ${i} preun " set -x"
-  targettype ${i} preun " export GCCVER=\$(LANG=C gcc --version | head -1 | cut -d" " -f5) "
+  targettype ${i} preun " export GCCVER=\$(LANG=C gcc -dumpversion) "
   targettype ${i} preun " for bin in addr2line ar as c++filt elfedit gprof ld ld.bfd ld.gold nm objcopy objdump ranlib readelf size strings strip ; do"
   targettype ${i} preun "   binary="/usr/bin/\${bin}" "
   targettype ${i} preun "   if test -e \${binary}.orig-arm ; then"

@@ -1,5 +1,5 @@
 /* Plugin control for the GNU linker.
-   Copyright 2010, 2011 Free Software Foundation, Inc.
+   Copyright (C) 2010-2014 Free Software Foundation, Inc.
 
    This file is part of the GNU Binutils.
 
@@ -127,8 +127,9 @@ static const size_t tv_header_size = ARRAY_SIZE (tv_header_tags);
 
 /* Forward references.  */
 static bfd_boolean plugin_notice (struct bfd_link_info *,
-				  struct bfd_link_hash_entry *, bfd *,
-				  asection *, bfd_vma, flagword, const char *);
+				  struct bfd_link_hash_entry *,
+				  struct bfd_link_hash_entry *,
+				  bfd *, asection *, bfd_vma, flagword);
 
 #if !defined (HAVE_DLFCN_H) && defined (HAVE_WINDOWS_H)
 
@@ -155,6 +156,14 @@ dlclose (void *handle)
 
 #endif /* !defined (HAVE_DLFCN_H) && defined (HAVE_WINDOWS_H)  */
 
+#ifndef HAVE_DLFCN_H
+static const char *
+dlerror (void)
+{
+  return "";
+}
+#endif
+
 /* Helper function for exiting with error status.  */
 static int
 set_plugin_error (const char *plugin)
@@ -178,7 +187,7 @@ plugin_error_plugin (void)
 }
 
 /* Handle -plugin arg: find and load plugin, or return error.  */
-int
+void
 plugin_opt_plugin (const char *plugin)
 {
   plugin_t *newplug;
@@ -188,7 +197,7 @@ plugin_opt_plugin (const char *plugin)
   newplug->name = plugin;
   newplug->dlhandle = dlopen (plugin, RTLD_NOW);
   if (!newplug->dlhandle)
-    return set_plugin_error (plugin);
+    einfo (_("%P%F: %s: error loading plugin: %s\n"), plugin, dlerror ());
 
   /* Chain on end, so when we run list it is in command-line order.  */
   *plugins_tail_chain_ptr = newplug;
@@ -197,7 +206,6 @@ plugin_opt_plugin (const char *plugin)
   /* Record it as current plugin for receiving args.  */
   last_plugin = newplug;
   last_plugin_args_tail_chain_ptr = &newplug->args;
-  return 0;
 }
 
 /* Accumulate option arguments for last-loaded plugin, or return
@@ -209,6 +217,17 @@ plugin_opt_plugin_arg (const char *arg)
 
   if (!last_plugin)
     return set_plugin_error (_("<no plugin>"));
+
+  /* Ignore -pass-through= from GCC driver.  */
+  if (*arg == '-')
+    {
+      const char *p = arg + 1;
+
+      if (*p == '-')
+	++p;
+      if (strncmp (p, "pass-through=", 13) == 0)
+	return 0;
+    }
 
   newarg = xmalloc (sizeof *newarg);
   newarg->arg = arg;
@@ -252,17 +271,12 @@ plugin_get_ir_dummy_bfd (const char *name, bfd *srctemplate)
 }
 
 /* Check if the BFD passed in is an IR dummy object file.  */
-static bfd_boolean
+static inline bfd_boolean
 is_ir_dummy_bfd (const bfd *abfd)
 {
   /* ABFD can sometimes legitimately be NULL, e.g. when called from one
-     of the linker callbacks for a symbol in the *ABS* or *UND* sections.
-     Likewise, the usrdata field may be NULL if ABFD was added by the
-     backend without a corresponding input statement, as happens e.g.
-     when processing DT_NEEDED dependencies.  */
-  return (abfd
-	  && abfd->usrdata
-	  && ((lang_input_statement_type *)(abfd->usrdata))->claimed);
+     of the linker callbacks for a symbol in the *ABS* or *UND* sections.  */
+  return abfd != NULL && (abfd->flags & BFD_PLUGIN) != 0;
 }
 
 /* Helpers to convert between BFD and GOLD symbol formats.  */
@@ -422,20 +436,18 @@ add_symbols (void *handle, int nsyms, const struct ld_plugin_symbol *syms)
 /* Get the input file information with an open (possibly re-opened)
    file descriptor.  */
 static enum ld_plugin_status
-get_input_file (const void *handle, struct ld_plugin_input_file *file)
+get_input_file (const void *handle ATTRIBUTE_UNUSED,
+                struct ld_plugin_input_file *file ATTRIBUTE_UNUSED)
 {
   ASSERT (called_plugin);
-  handle = handle;
-  file = file;
   return LDPS_ERR;
 }
 
 /* Release the input file.  */
 static enum ld_plugin_status
-release_input_file (const void *handle)
+release_input_file (const void *handle ATTRIBUTE_UNUSED)
 {
   ASSERT (called_plugin);
-  handle = handle;
   return LDPS_ERR;
 }
 
@@ -697,7 +709,9 @@ set_tv_header (struct ld_plugin_tv *tv)
 	case LDPT_LINKER_OUTPUT:
 	  TVU(val) = (link_info.relocatable
 		      ? LDPO_REL
-		      : link_info.executable ? LDPO_EXEC : LDPO_DYN);
+		      : (link_info.executable
+			 ? (link_info.pie ? LDPO_PIE : LDPO_EXEC)
+			 : LDPO_DYN));
 	  break;
 	case LDPT_OUTPUT_NAME:
 	  TVU(string) = output_filename;
@@ -769,7 +783,7 @@ plugin_active_plugins_p (void)
 }
 
 /* Load up and initialise all plugins after argument parsing.  */
-int
+void
 plugin_load_plugins (void)
 {
   struct ld_plugin_tv *my_tv;
@@ -778,7 +792,7 @@ plugin_load_plugins (void)
 
   /* If there are no plugins, we need do nothing this run.  */
   if (!curplug)
-    return 0;
+    return;
 
   /* First pass over plugins to find max # args needed so that we
      can size and allocate the tv array.  */
@@ -798,17 +812,20 @@ plugin_load_plugins (void)
   while (curplug)
     {
       enum ld_plugin_status rv;
-      ld_plugin_onload onloadfn = dlsym (curplug->dlhandle, "onload");
+      ld_plugin_onload onloadfn;
+
+      onloadfn = (ld_plugin_onload) dlsym (curplug->dlhandle, "onload");
       if (!onloadfn)
-	onloadfn = dlsym (curplug->dlhandle, "_onload");
+	onloadfn = (ld_plugin_onload) dlsym (curplug->dlhandle, "_onload");
       if (!onloadfn)
-	return set_plugin_error (curplug->name);
+        einfo (_("%P%F: %s: error loading plugin: %s\n"),
+	       curplug->name, dlerror ());
       set_tv_plugin_args (curplug, &my_tv[tv_header_size]);
       called_plugin = curplug;
       rv = (*onloadfn) (my_tv);
       called_plugin = NULL;
       if (rv != LDPS_OK)
-	return set_plugin_error (curplug->name);
+	einfo (_("%P%F: %s: plugin error: %d\n"), curplug->name, rv);
       curplug = curplug->next;
     }
 
@@ -820,9 +837,8 @@ plugin_load_plugins (void)
   plugin_callbacks = *orig_callbacks;
   plugin_callbacks.notice = &plugin_notice;
   link_info.notice_all = TRUE;
+  link_info.lto_plugin_active = TRUE;
   link_info.callbacks = &plugin_callbacks;
-
-  return 0;
 }
 
 /* Call 'claim file' hook for all plugins.  */
@@ -873,7 +889,7 @@ plugin_maybe_claim (struct ld_plugin_input_file *file,
       if (entry->the_bfd->my_archive == NULL)
 	bfd_close (entry->the_bfd);
       entry->the_bfd = file->handle;
-      entry->claimed = TRUE;
+      entry->flags.claimed = TRUE;
       bfd_make_readable (entry->the_bfd);
     }
   else
@@ -881,7 +897,7 @@ plugin_maybe_claim (struct ld_plugin_input_file *file,
       /* If plugin didn't claim the file, we don't need the dummy bfd.
 	 Can't avoid speculatively creating it, alas.  */
       bfd_close_all_done (file->handle);
-      entry->claimed = FALSE;
+      entry->flags.claimed = FALSE;
     }
 }
 
@@ -925,14 +941,12 @@ plugin_call_cleanup (void)
 	  rv = (*curplug->cleanup_handler) ();
 	  called_plugin = NULL;
 	  if (rv != LDPS_OK)
-	    set_plugin_error (curplug->name);
+	    info_msg (_("%P: %s: error in plugin cleanup: %d (ignored)\n"),
+		      curplug->name, rv);
 	  dlclose (curplug->dlhandle);
 	}
       curplug = curplug->next;
     }
-  if (plugin_error_p ())
-    info_msg (_("%P: %s: error in plugin cleanup (ignored)\n"),
-	      plugin_error_plugin ());
 }
 
 /* To determine which symbols should be resolved LDPR_PREVAILING_DEF
@@ -944,35 +958,39 @@ plugin_call_cleanup (void)
 static bfd_boolean
 plugin_notice (struct bfd_link_info *info,
 	       struct bfd_link_hash_entry *h,
+	       struct bfd_link_hash_entry *inh,
 	       bfd *abfd,
 	       asection *section,
 	       bfd_vma value,
-	       flagword flags,
-	       const char *string)
+	       flagword flags)
 {
+  struct bfd_link_hash_entry *orig_h = h;
+
   if (h != NULL)
     {
       bfd *sym_bfd;
 
-      /* No further processing if this def/ref is from an IR dummy BFD.  */
+      if (h->type == bfd_link_hash_warning)
+	h = h->u.i.link;
+
+      /* Nothing to do here if this def/ref is from an IR dummy BFD.  */
       if (is_ir_dummy_bfd (abfd))
-	return TRUE;
+	;
 
       /* Making an indirect symbol counts as a reference unless this
 	 is a brand new symbol.  */
-      if (bfd_is_ind_section (section)
-	  || (flags & BSF_INDIRECT) != 0)
+      else if (bfd_is_ind_section (section)
+	       || (flags & BSF_INDIRECT) != 0)
 	{
+	  /* ??? Some of this is questionable.  See comments in
+	     _bfd_generic_link_add_one_symbol for case IND.  */
 	  if (h->type != bfd_link_hash_new)
 	    {
-	      struct bfd_link_hash_entry *inh;
-
 	      h->non_ir_ref = TRUE;
-	      inh = bfd_wrapped_link_hash_lookup (abfd, info, string, FALSE,
-						  FALSE, FALSE);
-	      if (inh != NULL)
-		inh->non_ir_ref = TRUE;
+	      inh->non_ir_ref = TRUE;
 	    }
+	  else if (inh->type == bfd_link_hash_new)
+	    inh->non_ir_ref = TRUE;
 	}
 
       /* Nothing to do here for warning symbols.  */
@@ -985,7 +1003,15 @@ plugin_notice (struct bfd_link_info *info,
 
       /* If this is a ref, set non_ir_ref.  */
       else if (bfd_is_und_section (section))
-	h->non_ir_ref = TRUE;
+	{
+	  /* Replace the undefined dummy bfd with the real one.  */
+	  if ((h->type == bfd_link_hash_undefined
+	       || h->type == bfd_link_hash_undefweak)
+	      && (h->u.undef.abfd == NULL
+		  || (h->u.undef.abfd->flags & BFD_PLUGIN) != 0))
+	    h->u.undef.abfd = abfd;
+	  h->non_ir_ref = TRUE;
+	}
 
       /* Otherwise, it must be a new def.  Ensure any symbol defined
 	 in an IR dummy BFD takes on a new value from a real BFD.
@@ -1005,23 +1031,12 @@ plugin_notice (struct bfd_link_info *info,
     }
 
   /* Continue with cref/nocrossref/trace-sym processing.  */
-  if (h == NULL
+  if (orig_h == NULL
       || orig_notice_all
       || (info->notice_hash != NULL
-	  && bfd_hash_lookup (info->notice_hash, h->root.string,
+	  && bfd_hash_lookup (info->notice_hash, orig_h->root.string,
 			      FALSE, FALSE) != NULL))
-    return (*orig_callbacks->notice) (info, h,
-				      abfd, section, value, flags, string);
+    return (*orig_callbacks->notice) (info, orig_h, inh,
+				      abfd, section, value, flags);
   return TRUE;
-}
-
-/* Return true if bfd is a dynamic library that should be reloaded.  */
-
-bfd_boolean
-plugin_should_reload (bfd *abfd)
-{
-  return ((abfd->flags & DYNAMIC) != 0
-	  && bfd_get_flavour (abfd) == bfd_target_elf_flavour
-	  && bfd_get_format (abfd) == bfd_object
-	  && (elf_dyn_lib_class (abfd) & DYN_AS_NEEDED) != 0);
 }

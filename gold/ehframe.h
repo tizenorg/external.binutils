@@ -1,6 +1,6 @@
 // ehframe.h -- handle exception frame sections for gold  -*- C++ -*-
 
-// Copyright 2006, 2007, 2008, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2006-2014 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -174,10 +174,14 @@ class Fde
   }
 
   // Create an FDE associated with a PLT.
-  Fde(Output_data* plt, const unsigned char* contents, size_t length)
+  Fde(Output_data* plt, const unsigned char* contents, size_t length,
+      bool post_map)
     : object_(NULL),
       contents_(reinterpret_cast<const char*>(contents), length)
-  { this->u_.from_linker.plt = plt; }
+  {
+    this->u_.from_linker.plt = plt;
+    this->u_.from_linker.post_map = post_map;
+  }
 
   // Return the length of this FDE.  Add 4 for the length and 4 for
   // the offset to the CIE.
@@ -196,14 +200,19 @@ class Fde
 			     output_offset);
   }
 
+  // Return whether this FDE was added after merge mapping.
+  bool
+  post_map()
+  { return this->object_ == NULL && this->u_.from_linker.post_map; }
+
   // Write the FDE to OVIEW starting at OFFSET.  FDE_ENCODING is the
   // encoding, from the CIE.  Round up the bytes to ADDRALIGN if
   // necessary.  ADDRESS is the virtual address of OVIEW.  Record the
   // FDE in EH_FRAME_HDR.  Return the new offset.
   template<int size, bool big_endian>
   section_offset_type
-  write(unsigned char* oview, section_offset_type offset,
-	uint64_t address, unsigned int addralign,
+  write(unsigned char* oview, section_offset_type output_section_offset,
+	section_offset_type offset, uint64_t address, unsigned int addralign,
 	section_offset_type cie_offset, unsigned char fde_encoding,
 	Eh_frame_hdr* eh_frame_hdr);
 
@@ -229,11 +238,28 @@ class Fde
       // The only linker generated FDEs are for PLT sections, and this
       // points to the PLT section.
       Output_data* plt;
+      // Set if the FDE was added after merge mapping.
+      bool post_map;
     } from_linker;
   } u_;
   // FDE data.
   std::string contents_;
 };
+
+// A FDE plus some info from a CIE to allow later writing of the FDE.
+
+struct Post_fde
+{
+  Post_fde(Fde* f, section_offset_type cie_off, unsigned char encoding)
+    : fde(f), cie_offset(cie_off), fde_encoding(encoding)
+  { }
+
+  Fde* fde;
+  section_offset_type cie_offset;
+  unsigned char fde_encoding;
+};
+
+typedef std::vector<Post_fde> Post_fdes;
 
 // This class holds a CIE.
 
@@ -284,14 +310,17 @@ class Cie
   set_output_offset(section_offset_type output_offset, unsigned int addralign,
 		    Merge_map*);
 
-  // Write the CIE to OVIEW starting at OFFSET.  EH_FRAME_HDR is the
-  // exception frame header for FDE recording.  Round up the bytes to
-  // ADDRALIGN.  ADDRESS is the virtual address of OVIEW.  Return the
-  // new offset.
+  // Write the CIE to OVIEW starting at OFFSET.  Round up the bytes to
+  // ADDRALIGN.  ADDRESS is the virtual address of OVIEW.
+  // EH_FRAME_HDR is the exception frame header for FDE recording.
+  // POST_FDES stashes FDEs created after mappings were done, for later
+  // writing.  Return the new offset.
   template<int size, bool big_endian>
   section_offset_type
-  write(unsigned char* oview, section_offset_type offset, uint64_t address,
-	unsigned int addralign, Eh_frame_hdr* eh_frame_hdr);
+  write(unsigned char* oview, section_offset_type output_section_offset,
+	section_offset_type offset, uint64_t address,
+	unsigned int addralign, Eh_frame_hdr* eh_frame_hdr,
+	Post_fdes* post_fdes);
 
   friend bool operator<(const Cie&, const Cie&);
   friend bool operator==(const Cie&, const Cie&);

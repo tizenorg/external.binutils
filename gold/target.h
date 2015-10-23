@@ -1,6 +1,6 @@
 // target.h -- target support for gold   -*- C++ -*-
 
-// Copyright 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2006-2014 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -36,6 +36,7 @@
 #include "elfcpp.h"
 #include "options.h"
 #include "parameters.h"
+#include "stringpool.h"
 #include "debug.h"
 
 namespace gold
@@ -49,18 +50,19 @@ template<int size, bool big_endian>
 class Sized_relobj_file;
 class Relocatable_relocs;
 template<int size, bool big_endian>
-class Relocate_info;
+struct Relocate_info;
 class Reloc_symbol_changes;
 class Symbol;
 template<int size>
 class Sized_symbol;
 class Symbol_table;
 class Output_data;
-template<int size, bool big_endian>
-class Output_data_got;
+class Output_data_got_base;
 class Output_section;
 class Input_objects;
 class Task;
+struct Symbol_location;
+class Versions;
 
 // The abstract class for target specific handling.
 
@@ -142,6 +144,16 @@ class Target
       return std::min(this->pti_->common_pagesize,
 		      this->abi_pagesize());
   }
+
+  // Return whether PF_X segments must contain nothing but the contents of
+  // SHF_EXECINSTR sections (no non-executable data, no headers).
+  bool
+  isolate_execinstr() const
+  { return this->pti_->isolate_execinstr; }
+
+  uint64_t
+  rosegment_gap() const
+  { return this->pti_->rosegment_gap; }
 
   // If we see some object files with .note.GNU-stack sections, and
   // some objects files without them, this returns whether we should
@@ -227,8 +239,14 @@ class Target
   // Adjust the output file header before it is written out.  VIEW
   // points to the header in external form.  LEN is the length.
   void
-  adjust_elf_header(unsigned char* view, int len) const
+  adjust_elf_header(unsigned char* view, int len)
   { return this->do_adjust_elf_header(view, len); }
+
+  // Return address and size to plug into eh_frame FDEs associated with a PLT.
+  void
+  plt_fde_location(const Output_data* plt, unsigned char* oview,
+		   uint64_t* address, off_t* len) const
+  { return this->do_plt_fde_location(plt, oview, address, len); }
 
   // Return whether NAME is a local label name.  This is used to implement the
   // --discard-locals options.
@@ -246,19 +264,35 @@ class Target
   reloc_addend(void* arg, unsigned int type, uint64_t addend) const
   { return this->do_reloc_addend(arg, type, addend); }
 
-  // Return the PLT address to use for a global symbol.  This is used
-  // for STT_GNU_IFUNC symbols.  The symbol's plt_offset is relative
-  // to this PLT address.
+  // Return the PLT address to use for a global symbol.
   uint64_t
   plt_address_for_global(const Symbol* sym) const
   { return this->do_plt_address_for_global(sym); }
 
-  // Return the PLT address to use for a local symbol.  This is used
-  // for STT_GNU_IFUNC symbols.  The symbol's plt_offset is relative
-  // to this PLT address.
+  // Return the PLT address to use for a local symbol.
   uint64_t
   plt_address_for_local(const Relobj* object, unsigned int symndx) const
   { return this->do_plt_address_for_local(object, symndx); }
+
+  // Return the offset to use for the GOT_INDX'th got entry which is
+  // for a local tls symbol specified by OBJECT, SYMNDX.
+  int64_t
+  tls_offset_for_local(const Relobj* object,
+		       unsigned int symndx,
+		       unsigned int got_indx) const
+  { return do_tls_offset_for_local(object, symndx, got_indx); }
+
+  // Return the offset to use for the GOT_INDX'th got entry which is
+  // for global tls symbol GSYM.
+  int64_t
+  tls_offset_for_global(Symbol* gsym, unsigned int got_indx) const
+  { return do_tls_offset_for_global(gsym, got_indx); }
+
+  // For targets that use function descriptors, if LOC is the location
+  // of a function, modify it to point at the function entry location.
+  void
+  function_location(Symbol_location* loc) const
+  { return do_function_location(loc); }
 
   // Return whether this target can use relocation types to determine
   // if a function's address is taken.
@@ -345,7 +379,7 @@ class Target
       return pass < 2;
 
     return this->do_relax(pass, input_objects, symtab, layout, task);
-  } 
+  }
 
   // Return the target-specific name of attributes section.  This is
   // NULL if a target does not use attributes section or if it uses
@@ -365,7 +399,7 @@ class Target
   {
     return ((this->pti_->attributes_section != NULL
 	     && strcmp(name, this->pti_->attributes_section) == 0)
-	    || strcmp(name, ".gnu.attributes") == 0); 
+	    || strcmp(name, ".gnu.attributes") == 0);
   }
 
   // Return a bit mask of argument types for attribute with TAG.
@@ -384,7 +418,7 @@ class Target
   // which may be used for expensive, target-specific initialization.
   void
   select_as_default_target()
-  { this->do_select_as_default_target(); } 
+  { this->do_select_as_default_target(); }
 
   // Return the value to store in the EI_OSABI field in the ELF
   // header.
@@ -396,6 +430,60 @@ class Target
   void
   set_osabi(elfcpp::ELFOSABI osabi)
   { this->osabi_ = osabi; }
+
+  // Define target-specific standard symbols.
+  void
+  define_standard_symbols(Symbol_table* symtab, Layout* layout)
+  { this->do_define_standard_symbols(symtab, layout); }
+
+  // Return the output section name to use given an input section
+  // name, or NULL if no target specific name mapping is required.
+  // Set *PLEN to the length of the name if returning non-NULL.
+  const char*
+  output_section_name(const Relobj* relobj,
+		      const char* name,
+		      size_t* plen) const
+  { return this->do_output_section_name(relobj, name, plen); }
+
+  // Add any special sections for this symbol to the gc work list.
+  void
+  gc_mark_symbol(Symbol_table* symtab, Symbol* sym) const
+  { this->do_gc_mark_symbol(symtab, sym); }
+
+  // Return the name of the entry point symbol.
+  const char*
+  entry_symbol_name() const
+  { return this->pti_->entry_symbol_name; }
+
+  // Whether the target has a custom set_dynsym_indexes method.
+  bool
+  has_custom_set_dynsym_indexes() const
+  { return this->do_has_custom_set_dynsym_indexes(); }
+
+  // Custom set_dynsym_indexes method for a target.
+  unsigned int
+  set_dynsym_indexes(std::vector<Symbol*>* dyn_symbols, unsigned int index,
+                     std::vector<Symbol*>* syms, Stringpool* dynpool,
+                     Versions* versions, Symbol_table* symtab) const
+  {
+    return this->do_set_dynsym_indexes(dyn_symbols, index, syms, dynpool,
+                                       versions, symtab);
+  }
+
+  // Get the custom dynamic tag value.
+  unsigned int
+  dynamic_tag_custom_value(elfcpp::DT tag) const
+  { return this->do_dynamic_tag_custom_value(tag); }
+
+  // Adjust the value written to the dynamic symbol table.
+  void
+  adjust_dyn_symbol(const Symbol* sym, unsigned char* view) const
+  { this->do_adjust_dyn_symbol(sym, view); }
+
+  // Return whether to include the section in the link.
+  bool
+  should_include_section(elfcpp::Elf_Word sh_type) const
+  { return this->do_should_include_section(sh_type); }
 
  protected:
   // This struct holds the constant information for a child class.  We
@@ -431,6 +519,11 @@ class Target
     uint64_t abi_pagesize;
     // The common page size used by actual implementations.
     uint64_t common_pagesize;
+    // Whether PF_X segments must contain nothing but the contents of
+    // SHF_EXECINSTR sections (no non-executable data, no headers).
+    bool isolate_execinstr;
+    // If nonzero, distance from the text segment to the read-only segment.
+    uint64_t rosegment_gap;
     // The special section index for small common symbols; SHN_UNDEF
     // if none.
     elfcpp::Elf_Half small_common_shndx;
@@ -445,6 +538,8 @@ class Target
     const char* attributes_section;
     // Vendor name of vendor attributes.
     const char* attributes_vendor;
+    // Name of the main entry point to the program.
+    const char* entry_symbol_name;
   };
 
   Target(const Target_info* pti)
@@ -484,7 +579,12 @@ class Target
   // By default, we set the EI_OSABI field if requested (in
   // Sized_target).
   virtual void
-  do_adjust_elf_header(unsigned char*, int) const = 0;
+  do_adjust_elf_header(unsigned char*, int) = 0;
+
+  // Return address and size to plug into eh_frame FDEs associated with a PLT.
+  virtual void
+  do_plt_fde_location(const Output_data* plt, unsigned char* oview,
+		      uint64_t* address, off_t* len) const;
 
   // Virtual function which may be overridden by the child class.
   virtual bool
@@ -511,6 +611,17 @@ class Target
   virtual uint64_t
   do_plt_address_for_local(const Relobj*, unsigned int) const
   { gold_unreachable(); }
+
+  virtual int64_t
+  do_tls_offset_for_local(const Relobj*, unsigned int, unsigned int) const
+  { gold_unreachable(); }
+
+  virtual int64_t
+  do_tls_offset_for_global(Symbol*, unsigned int) const
+  { gold_unreachable(); }
+
+  virtual void
+  do_function_location(Symbol_location*) const = 0;
 
   // Virtual function which may be overriden by the child class.
   virtual bool
@@ -558,7 +669,7 @@ class Target
     this->processor_specific_flags_ = flags;
     this->are_processor_specific_flags_set_ = true;
   }
-  
+
 #ifdef HAVE_TARGET_32_LITTLE
   // Virtual functions which may be overridden by the child class.
   virtual Object*
@@ -615,7 +726,7 @@ class Target
 		  section_offset_type offset, size_t len) const;
 
   // This must be overridden by the child class if it has target-specific
-  // attributes subsection in the attribute section. 
+  // attributes subsection in the attribute section.
   virtual int
   do_attribute_arg_type(int) const
   { gold_unreachable(); }
@@ -629,6 +740,48 @@ class Target
   virtual void
   do_select_as_default_target()
   { }
+
+  // This may be overridden by the child class.
+  virtual void
+  do_define_standard_symbols(Symbol_table*, Layout*)
+  { }
+
+  // This may be overridden by the child class.
+  virtual const char*
+  do_output_section_name(const Relobj*, const char*, size_t*) const
+  { return NULL; }
+
+  // This may be overridden by the child class.
+  virtual void
+  do_gc_mark_symbol(Symbol_table*, Symbol*) const
+  { }
+
+  // This may be overridden by the child class.
+  virtual bool
+  do_has_custom_set_dynsym_indexes() const
+  { return false; }
+
+  // This may be overridden by the child class.
+  virtual unsigned int
+  do_set_dynsym_indexes(std::vector<Symbol*>*, unsigned int,
+                        std::vector<Symbol*>*, Stringpool*, Versions*,
+                        Symbol_table*) const
+  { gold_unreachable(); }
+
+  // This may be overridden by the child class.
+  virtual unsigned int
+  do_dynamic_tag_custom_value(elfcpp::DT) const
+  { gold_unreachable(); }
+
+  // This may be overridden by the child class.
+  virtual void
+  do_adjust_dyn_symbol(const Symbol*, unsigned char*) const
+  { }
+
+  // This may be overridden by the child class.
+  virtual bool
+  do_should_include_section(elfcpp::Elf_Word) const
+  { return true; }
 
  private:
   // The implementations of the four do_make_elf_object virtual functions are
@@ -762,24 +915,24 @@ class Sized_target : public Target
 			  const unsigned char* plocal_symbols,
 			  Relocatable_relocs*) = 0;
 
-  // Relocate a section during a relocatable link.  The parameters are
-  // like relocate_section, with additional parameters for the view of
-  // the output reloc section.
+  // Emit relocations for a section during a relocatable link, and for
+  // --emit-relocs.  The parameters are like relocate_section, with
+  // additional parameters for the view of the output reloc section.
   virtual void
-  relocate_for_relocatable(const Relocate_info<size, big_endian>*,
-			   unsigned int sh_type,
-			   const unsigned char* prelocs,
-			   size_t reloc_count,
-			   Output_section* output_section,
-			   off_t offset_in_output_section,
-			   const Relocatable_relocs*,
-			   unsigned char* view,
-			   typename elfcpp::Elf_types<size>::Elf_Addr
-			     view_address,
-			   section_size_type view_size,
-			   unsigned char* reloc_view,
-			   section_size_type reloc_view_size) = 0;
- 
+  relocate_relocs(const Relocate_info<size, big_endian>*,
+		  unsigned int sh_type,
+		  const unsigned char* prelocs,
+		  size_t reloc_count,
+		  Output_section* output_section,
+		  typename elfcpp::Elf_types<size>::Elf_Off
+                    offset_in_output_section,
+		  const Relocatable_relocs*,
+		  unsigned char* view,
+		  typename elfcpp::Elf_types<size>::Elf_Addr view_address,
+		  section_size_type view_size,
+		  unsigned char* reloc_view,
+		  section_size_type reloc_view_size) = 0;
+
   // Perform target-specific processing in a relocatable link.  This is
   // only used if we use the relocation strategy RELOC_SPECIAL.
   // RELINFO points to a Relocation_info structure. SH_TYPE is the relocation
@@ -802,14 +955,15 @@ class Sized_target : public Target
 			       const unsigned char* /* preloc_in */,
 			       size_t /* relnum */,
 			       Output_section* /* output_section */,
-			       off_t /* offset_in_output_section */,
+			       typename elfcpp::Elf_types<size>::Elf_Off
+                                 /* offset_in_output_section */,
 			       unsigned char* /* view */,
 			       typename elfcpp::Elf_types<size>::Elf_Addr
 				 /* view_address */,
 			       section_size_type /* view_size */,
 			       unsigned char* /* preloc_out*/)
   { gold_unreachable(); }
- 
+
   // Return the number of entries in the GOT.  This is only used for
   // laying out the incremental link info sections.  A target needs
   // to implement this to support incremental linking.
@@ -845,7 +999,7 @@ class Sized_target : public Target
   // Create the GOT and PLT sections for an incremental update.
   // A target needs to implement this to support incremental linking.
 
-  virtual Output_data_got<size, big_endian>*
+  virtual Output_data_got_base*
   init_got_plt_for_update(Symbol_table*,
 			  Layout*,
 			  unsigned int /* got_count */,
@@ -897,6 +1051,21 @@ class Sized_target : public Target
 		   section_size_type /* view_size */)
   { gold_unreachable(); }
 
+  // Handle target specific gc actions when adding a gc reference from
+  // SRC_OBJ, SRC_SHNDX to a location specified by DST_OBJ, DST_SHNDX
+  // and DST_OFF.
+  void
+  gc_add_reference(Symbol_table* symtab,
+		   Object* src_obj,
+		   unsigned int src_shndx,
+		   Object* dst_obj,
+		   unsigned int dst_shndx,
+		   typename elfcpp::Elf_types<size>::Elf_Addr dst_off) const
+  {
+    this->do_gc_add_reference(symtab, src_obj, src_shndx,
+			      dst_obj, dst_shndx, dst_off);
+  }
+
  protected:
   Sized_target(const Target::Target_info* pti)
     : Target(pti)
@@ -907,7 +1076,18 @@ class Sized_target : public Target
 
   // Set the EI_OSABI field if requested.
   virtual void
-  do_adjust_elf_header(unsigned char*, int) const;
+  do_adjust_elf_header(unsigned char*, int);
+
+  // Handle target specific gc actions when adding a gc reference.
+  virtual void
+  do_gc_add_reference(Symbol_table*, Object*, unsigned int,
+		      Object*, unsigned int,
+		      typename elfcpp::Elf_types<size>::Elf_Addr) const
+  { }
+
+  virtual void
+  do_function_location(Symbol_location*) const
+  { }
 };
 
 } // End namespace gold.

@@ -1,6 +1,6 @@
 /* yyscript.y -- linker script grammar for gold.  */
 
-/* Copyright 2006, 2007, 2008 Free Software Foundation, Inc.
+/* Copyright (C) 2006-2014 Free Software Foundation, Inc.
    Written by Ian Lance Taylor <iant@google.com>.
 
    This file is part of gold.
@@ -528,6 +528,8 @@ section_cmd:
 		 nothing, we accept it and ignore it.  */
 	    }
 	| SORT_BY_NAME '(' CONSTRUCTORS ')'
+	| INCLUDE string
+	    { script_include_directive(closure, $2.value, $2.length); }
 	| ';'
 	;
 
@@ -689,6 +691,8 @@ file_or_sections_cmd:
 	| assignment end
 	| ASSERT_K '(' parse_exp ',' string ')'
 	    { script_add_assertion(closure, $3, $5.value, $5.length); }
+	| INCLUDE string
+	    { script_include_directive(closure, $2.value, $2.length); }
 	;
 
 /* A list of MEMORY definitions.  */

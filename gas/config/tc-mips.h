@@ -1,6 +1,5 @@
 /* tc-mips.h -- header file for tc-mips.c.
-   Copyright 1993, 1994, 1995, 1996, 1997, 2000, 2001, 2002, 2003, 2004,
-   2005, 2006, 2007, 2008, 2009, 2010  Free Software Foundation, Inc.
+   Copyright (C) 1993-2014 Free Software Foundation, Inc.
    Contributed by the OSF and Ralph Campbell.
    Written by Keith Knowles and Ralph Campbell, working independently.
    Modified for ECOFF support by Ian Lance Taylor of Cygnus Support.
@@ -113,8 +112,8 @@ extern int mips_parse_long_option (const char *);
 #define tc_frob_label(sym) mips_define_label (sym)
 extern void mips_define_label (symbolS *);
 
-#define tc_new_dot_label(sym) mips_record_label (sym)
-extern void mips_record_label (symbolS *);
+#define tc_new_dot_label(sym) mips_add_dot_label (sym)
+extern void mips_add_dot_label (symbolS *);
 
 #define tc_frob_file_before_adjust() mips_frob_file_before_adjust ()
 extern void mips_frob_file_before_adjust (void);
@@ -137,8 +136,6 @@ extern int mips_fix_adjustable (struct fix *);
 #define EXTERN_FORCE_RELOC			\
   (OUTPUT_FLAVOR == bfd_target_elf_flavour)
 
-/* When generating NEWABI code, we may need to have to keep combined
-   relocations which don't have symbols.  */
 #define TC_FORCE_RELOCATION(FIX) mips_force_relocation (FIX)
 extern int mips_force_relocation (struct fix *);
 
@@ -191,5 +188,13 @@ extern int tc_mips_regname_to_dw2regnum (char *regname);
 
 #define DWARF2_DEFAULT_RETURN_COLUMN 31
 #define DWARF2_CIE_DATA_ALIGNMENT (-4)
+
+#define DIFF_EXPR_OK
+/* We define DIFF_EXPR_OK because of R_MIPS_PC32, but we have no
+   64-bit form for n64 CFIs.  */
+#define CFI_DIFF_EXPR_OK 0
+
+#define CONVERT_SYMBOLIC_ATTRIBUTE(name) mips_convert_symbolic_attribute (name)
+extern int mips_convert_symbolic_attribute (const char *);
 
 #endif /* TC_MIPS */

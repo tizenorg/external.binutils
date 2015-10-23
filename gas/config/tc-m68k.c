@@ -1,7 +1,5 @@
 /* tc-m68k.c -- Assemble for the m68k family
-   Copyright 1987, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -609,10 +607,16 @@ static const struct m68k_cpu m68k_cpus[] =
 
   {mcfisa_a|mcfisa_c|mcfusp,                    mcf51_ctrl, "51", 0},
   {mcfisa_a|mcfisa_c|mcfusp,                    mcf51_ctrl, "51ac", 1},
+  {mcfisa_a|mcfisa_c|mcfusp,                    mcf51_ctrl, "51ag", 1},
   {mcfisa_a|mcfisa_c|mcfusp,                    mcf51_ctrl, "51cn", 1},
   {mcfisa_a|mcfisa_c|mcfusp|mcfmac,  		mcf51_ctrl, "51em", 1},
+  {mcfisa_a|mcfisa_c|mcfusp|mcfmac,  		mcf51_ctrl, "51je", 1},
+  {mcfisa_a|mcfisa_c|mcfusp|mcfemac,            mcf51_ctrl, "51jf", 1},
+  {mcfisa_a|mcfisa_c|mcfusp|mcfemac,            mcf51_ctrl, "51jg", 1},
   {mcfisa_a|mcfisa_c|mcfusp,  			mcf51_ctrl, "51jm", 1},
+  {mcfisa_a|mcfisa_c|mcfusp|mcfmac,  		mcf51_ctrl, "51mm", 1},
   {mcfisa_a|mcfisa_c|mcfusp,                    mcf51_ctrl, "51qe", 1},
+  {mcfisa_a|mcfisa_c|mcfusp|mcfemac,            mcf51_ctrl, "51qm", 1},
 
   {mcfisa_a,					mcf_ctrl, "5200", 0},
   {mcfisa_a,					mcf_ctrl, "5202", 1},
@@ -1371,9 +1375,7 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixp)
     reloc->addend = fixp->fx_addnumber;
   else
     reloc->addend = (section->vma
-		     /* Explicit sign extension in case char is
-			unsigned.  */
-		     + ((fixp->fx_pcrel_adjust & 0xff) ^ 0x80) - 0x80
+		     + fixp->fx_pcrel_adjust
 		     + fixp->fx_addnumber
 		     + md_pcrel_from (fixp));
 #endif
@@ -4509,7 +4511,8 @@ md_assemble (char *str)
 		       (relax_substateT) (the_ins.fragb[n].fragty),
 		       the_ins.fragb[n].fadd, the_ins.fragb[n].foff, to_beg_P);
     }
-  n = (the_ins.numo - the_ins.fragb[n - 1].fragoff);
+  gas_assert (the_ins.nfrag >= 1);
+  n = the_ins.numo - the_ins.fragb[the_ins.nfrag - 1].fragoff;
   shorts_this_frag = 0;
   if (n)
     {
@@ -5164,10 +5167,6 @@ md_convert_frag_1 (fragS *fragP)
       /* Only DBcc instructions can come here.
 	 Change dbcc into dbcc/bral.
 	 JF: these used to be fr_opcode[2-7], but that's wrong.  */
-      if (flag_keep_pcrel)
-    	as_bad_where (fragP->fr_file, fragP->fr_line,
-		  _("Conversion of DBcc to absolute jump"));
-
       *buffer_address++ = 0x00;	/* Branch offset = 4.  */
       *buffer_address++ = 0x04;
       *buffer_address++ = 0x60;	/* Put in bra pc+6.  */
@@ -7905,9 +7904,7 @@ md_pcrel_from (fixS *fixP)
 {
   int adjust;
 
-  /* Because fx_pcrel_adjust is a char, and may be unsigned, we explicitly
-     sign extend the value here.  */
-  adjust = ((fixP->fx_pcrel_adjust & 0xff) ^ 0x80) - 0x80;
+  adjust = fixP->fx_pcrel_adjust;
   if (adjust == 64)
     adjust = -1;
   return fixP->fx_where + fixP->fx_frag->fr_address - adjust;
@@ -8131,3 +8128,17 @@ tc_m68k_frame_initial_instructions (void)
   cfi_add_CFA_def_cfa (sp_regno, -DWARF2_CIE_DATA_ALIGNMENT);
   cfi_add_CFA_offset (DWARF2_DEFAULT_RETURN_COLUMN, DWARF2_CIE_DATA_ALIGNMENT);
 }
+
+/* Check and emit error if broken-word handling has failed to fix up a
+   case-table.	This is called from write.c, after doing everything it
+   knows about how to handle broken words.  */
+
+void
+tc_m68k_check_adjusted_broken_word (offsetT new_offset, struct broken_word *brokwP)
+{
+  if (new_offset > 32767 || new_offset < -32768)
+    as_bad_where (brokwP->frag->fr_file, brokwP->frag->fr_line,
+		  _("Adjusted signed .word (%#lx) overflows: `switch'-statement too large."),
+		  (long) new_offset);
+}
+

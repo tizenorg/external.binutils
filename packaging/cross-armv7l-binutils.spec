@@ -9,33 +9,22 @@
 %define x64 x64
 %endif
 
+%define linaro_release 2015.01
+%define linaro_sub_release -2
+%define release_prefix %{linaro_release}
+
 Summary: A GNU collection of binary utilities
 Name: cross-armv7l-binutils
-Version: 2.22
-Release: 1.21.Mer
+Version: 2.25.0
+Release: %{linaro_release}
 License: GPLv3+
 Group: Development/Tools
-URL: http://sources.redhat.com/binutils
-Source: ftp://ftp.kernel.org/pub/linux/devel/binutils/binutils-%{version}.tar.bz2
+URL: http://www.linaro.org/
+Source: binutils-linaro-%{version}-%{linaro_release}%{?linaro_sub_release}.tar.xz
 Source2: binutils-2.19.50.0.1-output-format.sed
 Source100: baselibs.conf
 Source200: precheckin.sh
 Source201: README.PACKAGER
-Patch01: binutils-2.20.51.0.2-libtool-lib64.patch
-Patch04: binutils-2.20.51.0.2-version.patch
-Patch05: binutils-2.20.51.0.2-set-long-long.patch
-Patch06: binutils-2.20.51.0.10-copy-osabi.patch
-Patch07: binutils-2.20.51.0.10-sec-merge-emit.patch
-Patch08: binutils-2.20.51.0.2-build-id.patch
-Patch09: binutils-2.22-branch-updates.patch
-Patch10: binutils-2.22-156-pr10144.patch
-Patch11: fixbug13534_1.patch
-Patch12: fixbug13534_2.patch
-Patch13: fixbug13534_3.patch
-Patch14: fixbug13534_4.patch
-Patch15: fixbug13534_5.patch
-Patch16: pr_13990_14189.patch
-Patch17: pr_13177.patch
 
 %if "%{name}" != "binutils"
 %if "%{name}" != "cross-mipsel-binutils"
@@ -106,23 +95,7 @@ have a stable ABI.  Developers starting new projects are strongly encouraged
 to consider using libelf instead of BFD.
 
 %prep
-%setup -q -n binutils-%{version}
-%patch01 -p0 -b .libtool-lib64~
-# Causes build churn --cvm
-#%patch04 -p0 -b .version~
-%patch05 -p0 -b .set-long-long~
-%patch06 -p0 -b .copy-osabi~
-%patch07 -p0 -b .sec-merge-emit~
-%patch08 -p0 -b .build-id~
-%patch09 -p1 -b .branchupdates
-%patch10 -p1 -b .pr10144
-%patch11 -p1 -b .fixbug13534_1
-%patch12 -p1 -b .fixbug13534_2
-%patch13 -p1 -b .fixbug13534_3
-%patch14 -p1 -b .fixbug13534_4
-%patch15 -p1 -b .fixbug13534_5
-%patch16 -p1
-%patch17 -p1
+%setup -q -n binutils-linaro-%{version}-%{linaro_release}%{?linaro_sub_release}
 
 # We cannot run autotools as there is an exact requirement of autoconf-2.59.
 
@@ -193,7 +166,8 @@ export CFLAGS="$CFLAGS -Wl,-rpath,/emul/ia32-linux/usr/%{_lib}:/emul/ia32-linux/
 %if %{disable_nls}
   --disable-nls \
 %endif
-  --with-bugurl=http://bugzilla.tizen.com
+  --disable-gdb --disable-libdecnumber --disable-readline --disable-sim \
+  --with-bugurl=http://bugs.tizen.org/
 make %{_smp_mflags} tooldir=%{_prefix} all
 make %{_smp_mflags} tooldir=%{_prefix} info
 
@@ -389,57 +363,3 @@ fi
 %{_infodir}/bfd*info*
 %endif # %{isnative}
 
-%changelog
-* Tue Feb  7 2012 Carsten Munk <carsten.munk@gmail.com> - 2.22
-- Pull some patches relevant to MIPS from branch update, and
-  fix for PR10144
-* Mon Dec 12 2011 Ray Donnelly <mingw.android@gmail.com> - 2.22
-- Updated to binutils 2.22
-* Tue Jun 28 2011 Junfeng Dong <junfeng.dong@intel.com> - 2.21.51.0.8
-- Add patch binutils-2.21.51.0.8-pr12778.patch to fix dbus failure on arm.
-* Tue May  3 2011 Junfeng Dong <junfeng.dong@intel.com> - 2.21.51.0.8
-- Update to latest version 2.21.51.0.8.
-- Clean unused patch files.
-- Drop binutils.spec.diff.
-* Sun Apr 24 2011 Jan-Simon Möller <jsmoeller@linuxfoundation.org> - 1.0
-- Add baselibs.conf to src.rpm
-* Thu Mar 10 2011 Junfeng Dong <junfeng.dong@intel.com> -2.21
-- Update to 2.21. The changes include:
-- Drop the following patch which have been merged into 2.21 already.
-  binutils-2.20.51.0.2-ifunc-ld-s.patch, binutils-2.20.51.0.2-lwp.patch
-  binutils-2.20.51.0.2-tag-div-use.patch
-- Drop binutils-2.20.51.0.2-build-id.patch because of the code evolvement.
-- Recreate binutils-2.20.51.0.2-libtool-lib64.patch for 2.21 and rename
-  the new patch as binutils-2.21-libtool-lib64.patch.
-* Fri Jan  7 2011 Carsten Munk <carsten@maemo.org> - 2.20.51.0.2
-- Add armv7hl, armv7nhl cross-binutils- packages. Part of fix for BMC#11463
-* Fri Dec 31 2010 Carsten Munk <carsten@maemo.org> - 2.20.51.0.2
-- Add support for Tag_MPextension_use and Tag_DIV_use. Fixes BMC#11431
-* Wed Dec 29 2010 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
-- Bugfixing:
-  BMC#10336 - Error when installing binutils with --excludedocs in .ks
-* Tue May 25 2010 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
-- enable LTO (link time optimization)
-* Mon May  3 2010 Jan-Simon Möller <jansimon.moeller@linuxfoundation.org> - 2.20.51.0.2
-- Add precheckin.sh, README.packager
-- add cross-binutils-* packages (cross-compiler)
-* Thu Mar  4 2010 Anas Nashif <anas.nashif@intel.com> - 2.20.51.0.2
-- Use %%{_target_platform} as the build target
-* Sat Dec 12 2009 Arjan van de Ven <arjan@linux.intel.com> - 2.20.51.0.2
-- add the LD_AS_NEEDED env variable back, and get us closer to upstream
-* Fri Nov 27 2009 Austin Zhang <austin.zhang@intel.com> - 2.20.51.0.2
-- Update to 2.20.51.0.2
-* Sat Aug 22 2009 Anas Nashif <anas.nashif@intel.com> - 2.19.51.0.14
-- Update to 2.19.51.0.14
-* Wed May  6 2009 Arjan van de Ven <arjan@linux.intel.com> 2.19
-- Add LD_AS_NEEDED environment variable
-* Tue Jan 13 2009 Anas Nashif <anas.nashif@intel.com> 2.19
-- Fixed source tag
-* Thu Jan  8 2009 Anas Nashif <anas.nashif@intel.com> 2.19
-- Update to 2.19
-* Tue Dec 16 2008 Anas Nashif <anas.nashif@intel.com> 2.18.50.0.6
-- Fixed rpmlint errors in Summary tag
-* Thu Dec 11 2008 Anas Nashif <anas.nashif@intel.com> 2.18.50.0.6
-- Do not check for ia64
-* Thu Sep 18 2008 Austin Zhang <austin.zhang@intel.com> 2.18.50.0.6
-- add check for the info file before installation

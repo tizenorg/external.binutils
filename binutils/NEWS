@@ -1,5 +1,33 @@
 -*- text -*-
 
+Changes in 2.25:
+
+* Add --data option to strings to only print strings in loadable, initialized
+  data sections.  Change the default behaviour to be --all, but add a new
+  configure time option of --disable-default-strings-all to restore the old
+  default behaviour.
+
+* Add --include-all-whitespace to strings.
+
+* Add --dump-section option to objcopy.
+
+* Add support for the Andes NDS32.
+
+Changes in 2.24:
+
+* Objcopy now supports wildcard characters in command line options that take
+  section names.
+
+* Add support for Altera Nios II.
+
+Changes in 2.23:
+
+* Add support for the VLE extension to the PowerPC architecture.
+
+* Add support for x64 Windows target of the delayed-load-library.
+
+* Add support for the Renesas RL78 architecture.
+
 Changes in 2.22:
 
 * Add support for displaying the contents of .debug.macro sections.
@@ -10,7 +38,9 @@ Changes in 2.22:
 * Add --dwarf-start and --dwarf-end to readelf and objdump.  These are used by
   the new Emacs mode, see dwarf-mode.el.
 
-Changes in 2.21:
+* Add support for the Tilera TILEPro and TILE-Gx architectures.
+
+changes in 2.21:
 
 * Add --interleave-width option to objcopy to allowing copying a range of
   bytes from the input to the output with the --interleave option.
@@ -464,6 +494,12 @@ Changes in binutils 2.1:
   and/or local symbols only.  They now also support long options.
 
 
+Copyright (C) 2012-2014 Free Software Foundation, Inc.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.
+
 Local variables:
 fill-column: 79
 End:

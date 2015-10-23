@@ -1,7 +1,5 @@
 /* frags.c - manage frags -
-   Copyright 1987, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2003, 2004, 2005, 2006, 2007, 2008, 2009
-   Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -26,6 +24,20 @@
 
 extern fragS zero_address_frag;
 extern fragS predefined_address_frag;
+
+static int totalfrags;
+
+int
+get_frag_count (void)
+{
+  return totalfrags;
+}
+
+void
+clear_frag_count (void)
+{
+  totalfrags = 0;
+}
 
 /* Initialization for frag routines.  */
 
@@ -72,6 +84,7 @@ frag_alloc (struct obstack *ob)
   ptr = (fragS *) obstack_alloc (ob, SIZEOF_STRUCT_FRAG);
   obstack_alignment_mask (ob) = oalign;
   memset (ptr, 0, SIZEOF_STRUCT_FRAG);
+  totalfrags++;
   return ptr;
 }
 
@@ -81,12 +94,12 @@ frag_alloc (struct obstack *ob)
    do not return. Do not set up any fields of *now_frag.  */
 
 void
-frag_grow (unsigned int nchars)
+frag_grow (size_t nchars)
 {
   if (obstack_room (&frchain_now->frch_obstack) < nchars)
     {
-      long oldc;
-      long newc;
+      size_t oldc;
+      size_t newc;
 
       /* Try to allocate a bit more than needed right now.  But don't do
          this if we would waste too much memory.  Especially necessary
@@ -98,12 +111,14 @@ frag_grow (unsigned int nchars)
       newc += SIZEOF_STRUCT_FRAG;
 
       /* Check for possible overflow.  */
-      if (newc < 0)
-        as_fatal (_("can't extend frag %u chars"), nchars);
+      if (newc < nchars)
+        as_fatal (_("can't extend frag %lu chars"), (unsigned long) nchars);
 
-      /* Force to allocate at least NEWC bytes.  */
+      /* Force to allocate at least NEWC bytes, but not less than the
+         default.  */
       oldc = obstack_chunk_size (&frchain_now->frch_obstack);
-      obstack_chunk_size (&frchain_now->frch_obstack) = newc;
+      if (newc > oldc)
+	obstack_chunk_size (&frchain_now->frch_obstack) = newc;
 
       while (obstack_room (&frchain_now->frch_obstack) < nchars)
         {
@@ -137,7 +152,7 @@ frag_grow (unsigned int nchars)
    of frchain_now.  */
 
 void
-frag_new (int old_frags_var_max_size
+frag_new (size_t old_frags_var_max_size
 	  /* Number of chars (already allocated on obstack frags) in
 	     variable_length part of frag.  */)
 {
@@ -189,7 +204,7 @@ frag_new (int old_frags_var_max_size
    frag_now_growth past the new chars.  */
 
 char *
-frag_more (int nchars)
+frag_more (size_t nchars)
 {
   register char *retval;
 
@@ -204,8 +219,8 @@ frag_more (int nchars)
    new frag.  */
 
 static void
-frag_var_init (relax_stateT type, int max_chars, int var,
-               relax_substateT subtype, symbolS *symbol, offsetT offset,
+frag_var_init (relax_stateT type, size_t max_chars, size_t var,
+	       relax_substateT subtype, symbolS *symbol, offsetT offset,
                char *opcode)
 {
   frag_now->fr_var = var;
@@ -235,8 +250,9 @@ frag_var_init (relax_stateT type, int max_chars, int var,
    to write into.  */
 
 char *
-frag_var (relax_stateT type, int max_chars, int var, relax_substateT subtype,
-	  symbolS *symbol, offsetT offset, char *opcode)
+frag_var (relax_stateT type, size_t max_chars, size_t var,
+	  relax_substateT subtype, symbolS *symbol, offsetT offset,
+	  char *opcode)
 {
   register char *retval;
 
@@ -252,7 +268,7 @@ frag_var (relax_stateT type, int max_chars, int var, relax_substateT subtype,
 	No call to frag_grow is done.  */
 
 char *
-frag_variant (relax_stateT type, int max_chars, int var,
+frag_variant (relax_stateT type, size_t max_chars, size_t var,
 	      relax_substateT subtype, symbolS *symbol, offsetT offset,
 	      char *opcode)
 {
@@ -276,7 +292,7 @@ frag_wane (register fragS *fragP)
 
 /* Return the number of bytes by which the current frag can be grown.  */
 
-int
+size_t
 frag_room (void)
 {
   return obstack_room (&frchain_now->frch_obstack);
@@ -321,7 +337,7 @@ frag_align (int alignment, int fill_character, int max)
 
 void
 frag_align_pattern (int alignment, const char *fill_pattern,
-		    int n_fill, int max)
+		    size_t n_fill, int max)
 {
   char *p;
 
@@ -394,10 +410,10 @@ frag_append_1_char (int datum)
    not already accounted for in the frag FR_ADDRESS.  */
 
 bfd_boolean
-frag_offset_fixed_p (const fragS *frag1, const fragS *frag2, bfd_vma *offset)
+frag_offset_fixed_p (const fragS *frag1, const fragS *frag2, offsetT *offset)
 {
   const fragS *frag;
-  bfd_vma off;
+  offsetT off;
 
   /* Start with offset initialised to difference between the two frags.
      Prior to assigning frag addresses this will be zero.  */

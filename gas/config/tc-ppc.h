@@ -1,6 +1,5 @@
 /* tc-ppc.h -- Header file for tc-ppc.c.
-   Copyright 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-   2004, 2005, 2006, 2007, 2008, 2009 Free Software Foundation, Inc.
+   Copyright (C) 1994-2014 Free Software Foundation, Inc.
    Written by Ian Lance Taylor, Cygnus Support.
 
    This file is part of GAS, the GNU Assembler.
@@ -84,14 +83,11 @@ extern char *ppc_target_format (void);
     ppc_handle_align (FRAGP);
 
 extern void ppc_handle_align (struct frag *);
+extern void ppc_frag_check (struct frag *);
 
 #define SUB_SEGMENT_ALIGN(SEG, FRCHAIN) 0
 
-#define md_frag_check(FRAGP) \
-  if ((FRAGP)->has_code							\
-      && (((FRAGP)->fr_address + (FRAGP)->insn_addr) & 3) != 0)		\
-    as_bad_where ((FRAGP)->fr_file, (FRAGP)->fr_line,			\
-		  _("instruction address is not a multiple of 4"));
+#define md_frag_check(FRAGP) ppc_frag_check (FRAGP)
 
 /* Arrange to store the value of ppc_cpu at the site of a fixup
    for later use in md_apply_fix.  */
@@ -235,8 +231,22 @@ extern int ppc_fix_adjustable (struct fix *);
 /* Values passed to md_apply_fix don't include symbol values.  */
 #define MD_APPLY_SYM_VALUE(FIX) 0
 
+#define TC_PARSE_CONS_EXPRESSION(EXP, NBYTES) \
+  ppc_elf_parse_cons (EXP, NBYTES)
+extern bfd_reloc_code_real_type ppc_elf_parse_cons (expressionS *,
+						    unsigned int);
+#define TC_CONS_FIX_CHECK(EXP, NBYTES, FIX) \
+  ppc_elf_cons_fix_check (EXP, NBYTES, FIX)
+extern void ppc_elf_cons_fix_check (expressionS *, unsigned int, struct fix *);
+
 #define tc_frob_file_before_adjust ppc_frob_file_before_adjust
 extern void ppc_frob_file_before_adjust (void);
+
+#define tc_adjust_symtab() ppc_elf_adjust_symtab ()
+extern void ppc_elf_adjust_symtab (void);
+
+extern void ppc_elf_end (void);
+#define md_end ppc_elf_end
 
 #endif /* OBJ_ELF */
 
@@ -273,6 +283,8 @@ extern int tc_ppc_regname_to_dw2regnum (char *);
 
 extern int ppc_cie_data_alignment;
 
-#define DWARF2_LINE_MIN_INSN_LENGTH     4
+extern int ppc_dwarf2_line_min_insn_length;
+
+#define DWARF2_LINE_MIN_INSN_LENGTH     ppc_dwarf2_line_min_insn_length
 #define DWARF2_DEFAULT_RETURN_COLUMN    0x41
 #define DWARF2_CIE_DATA_ALIGNMENT       ppc_cie_data_alignment

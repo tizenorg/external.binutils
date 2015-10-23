@@ -1,6 +1,6 @@
 // resolve.cc -- symbol resolution for gold
 
-// Copyright 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2006-2014 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -96,7 +96,9 @@ Symbol::override_base(const elfcpp::Sym<size, big_endian>& sym,
   this->override_version(version);
   this->u_.from_object.shndx = st_shndx;
   this->is_ordinary_shndx_ = is_ordinary;
-  this->type_ = sym.get_st_type();
+  // Don't override st_type from plugin placeholder symbols.
+  if (object->pluginobj() == NULL)
+    this->type_ = sym.get_st_type();
   this->binding_ = sym.get_st_bind();
   this->override_visibility(sym.get_st_visibility());
   this->nonvis_ = sym.get_st_nonvis();
@@ -296,19 +298,37 @@ Symbol_table::resolve(Sized_symbol<size>* to,
 
   // Record if we've seen this symbol in a real ELF object (i.e., the
   // symbol is referenced from outside the world known to the plugin).
-  if (object->pluginobj() == NULL)
+  if (object->pluginobj() == NULL && !object->is_dynamic())
     to->set_in_real_elf();
 
   // If we're processing replacement files, allow new symbols to override
   // the placeholders from the plugin objects.
+  // Treat common symbols specially since it is possible that an ELF
+  // file increased the size of the alignment.
   if (to->source() == Symbol::FROM_OBJECT)
     {
       Pluginobj* obj = to->object()->pluginobj();
       if (obj != NULL
           && parameters->options().plugins()->in_replacement_phase())
         {
-          this->override(to, sym, st_shndx, is_ordinary, object, version);
-          return;
+	  bool adjust_common = false;
+	  typename Sized_symbol<size>::Size_type tosize = 0;
+	  typename Sized_symbol<size>::Value_type tovalue = 0;
+	  if (to->is_common() && !is_ordinary && st_shndx == elfcpp::SHN_COMMON)
+	    {
+	      adjust_common = true;
+	      tosize = to->symsize();
+	      tovalue = to->value();
+	    }
+	  this->override(to, sym, st_shndx, is_ordinary, object, version);
+	  if (adjust_common)
+	    {
+	      if (tosize > to->symsize())
+		to->set_symsize(tosize);
+	      if (tovalue > to->value())
+		to->set_value(tovalue);
+	    }
+	  return;
         }
     }
 
@@ -336,29 +356,40 @@ Symbol_table::resolve(Sized_symbol<size>* to,
       && to->name()[0] == '_' && to->name()[1] == 'Z')
     {
       Symbol_location fromloc
-          = { object, orig_st_shndx, sym.get_st_value() };
+          = { object, orig_st_shndx, static_cast<off_t>(sym.get_st_value()) };
       Symbol_location toloc = { to->object(), to->shndx(&to_is_ordinary),
-				to->value() };
+				static_cast<off_t>(to->value()) };
       this->candidate_odr_violations_[to->name()].insert(fromloc);
       this->candidate_odr_violations_[to->name()].insert(toloc);
     }
 
+  // Plugins don't provide a symbol type, so adopt the existing type
+  // if the FROM symbol is from a plugin.
+  elfcpp::STT fromtype = (object->pluginobj() != NULL
+			  ? to->type()
+			  : sym.get_st_type());
   unsigned int frombits = symbol_to_bits(sym.get_st_bind(),
                                          object->is_dynamic(),
 					 st_shndx, is_ordinary,
-                                         sym.get_st_type());
+                                         fromtype);
 
   bool adjust_common_sizes;
   bool adjust_dyndef;
   typename Sized_symbol<size>::Size_type tosize = to->symsize();
-  if (Symbol_table::should_override(to, frombits, sym.get_st_type(), OBJECT,
+  if (Symbol_table::should_override(to, frombits, fromtype, OBJECT,
 				    object, &adjust_common_sizes,
 				    &adjust_dyndef))
     {
       elfcpp::STB tobinding = to->binding();
+      typename Sized_symbol<size>::Value_type tovalue = to->value();
       this->override(to, sym, st_shndx, is_ordinary, object, version);
-      if (adjust_common_sizes && tosize > to->symsize())
-        to->set_symsize(tosize);
+      if (adjust_common_sizes)
+	{
+	  if (tosize > to->symsize())
+	    to->set_symsize(tosize);
+	  if (tovalue > to->value())
+	    to->set_value(tovalue);
+	}
       if (adjust_dyndef)
 	{
 	  // We are overriding an UNDEF or WEAK UNDEF with a DYN DEF.
@@ -368,8 +399,13 @@ Symbol_table::resolve(Sized_symbol<size>* to,
     }
   else
     {
-      if (adjust_common_sizes && sym.get_st_size() > tosize)
-        to->set_symsize(sym.get_st_size());
+      if (adjust_common_sizes)
+	{
+	  if (sym.get_st_size() > tosize)
+	    to->set_symsize(sym.get_st_size());
+	  if (sym.get_st_value() > to->value())
+	    to->set_value(sym.get_st_value());
+	}
       if (adjust_dyndef)
 	{
 	  // We are keeping a DYN DEF after seeing an UNDEF or WEAK UNDEF.
@@ -434,9 +470,8 @@ Symbol_table::should_override(const Symbol* to, unsigned int frombits,
 			      to->type());
     }
 
-  if (to->type() == elfcpp::STT_TLS
-      ? fromtype != elfcpp::STT_TLS
-      : fromtype == elfcpp::STT_TLS)
+  if ((to->type() == elfcpp::STT_TLS) ^ (fromtype == elfcpp::STT_TLS)
+      && !to->is_placeholder())
     Symbol_table::report_resolve_problem(true,
 					 _("symbol '%s' used as both __thread "
 					   "and non-__thread"),
@@ -897,6 +932,10 @@ Symbol::override_base_with_special(const Symbol* from)
 {
   bool same_name = this->name_ == from->name_;
   gold_assert(same_name || this->has_alias());
+
+  // If we are overriding an undef, remember the original binding.
+  if (this->is_undefined())
+    this->set_undef_binding(this->binding_);
 
   this->source_ = from->source_;
   switch (from->source_)

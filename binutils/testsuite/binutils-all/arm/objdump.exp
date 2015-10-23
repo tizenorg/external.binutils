@@ -1,5 +1,4 @@
-#   Copyright 2004, 2007, 2009
-#   Free Software Foundation, Inc.
+#   Copyright (C) 2004-2014 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -80,7 +79,7 @@ if [is_remote host] {
 
 set got [binutils_run $OBJDUMP "-dr $objfile $objfile"]
 
-set want "$objfile:\[ \]*file format.*$objfile:\[ \]*file format.*push.*add.*sub.*str.*add.*pop"
+set want "$objfile:\[ \]*file format.*$objfile:\[ \]*file format.*push.*add.*sub.*str.*add.*ldmfd"
 
 if [regexp $want $got] then {
     pass "multiple input files"

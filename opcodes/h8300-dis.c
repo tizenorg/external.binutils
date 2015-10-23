@@ -1,6 +1,5 @@
 /* Disassemble h8300 instructions.
-   Copyright 1993, 1994, 1996, 1998, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2010  Free Software Foundation, Inc.
+   Copyright (C) 1993-2014 Free Software Foundation, Inc.
 
    This file is part of the GNU opcodes library.
 
@@ -298,7 +297,7 @@ print_one_arg (disassemble_info *info,
     outfn (stream, "@(0x%x:%d,%s.l)", cst, cstlen, lregnames[rdisp_n]);
 
   else if (x & CTRL)
-    outfn (stream, cregnames[rn]);
+    outfn (stream, "%s", cregnames[rn]);
 
   else if ((x & MODE) == CCR)
     outfn (stream, "ccr");

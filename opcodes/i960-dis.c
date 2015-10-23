@@ -1,6 +1,5 @@
 /* Disassemble i80960 instructions.
-   Copyright 1990, 1991, 1993, 1994, 1995, 1996, 1998, 1999, 2000, 2001, 2003,
-   2005, 2007  Free Software Foundation, Inc.
+   Copyright (C) 1990-2014 Free Software Foundation, Inc.
 
    This file is part of the GNU opcodes library.
 
@@ -204,7 +203,7 @@ ctrl (bfd_vma memaddr, unsigned long word1, unsigned long word2 ATTRIBUTE_UNUSED
       return;
     }
 
-  (*info->fprintf_func) (stream, ctrl_tab[i].name);
+  (*info->fprintf_func) (stream, "%s", ctrl_tab[i].name);
   if (word1 & 2)
     /* Predicts branch not taken.  */
     (*info->fprintf_func) (stream, ".f");
@@ -276,7 +275,7 @@ cobr (bfd_vma memaddr, unsigned long word1, unsigned long word2 ATTRIBUTE_UNUSED
       return;
     }
 
-  (*info->fprintf_func) (stream, cobr_tab[i].name);
+  (*info->fprintf_func) (stream, "%s", cobr_tab[i].name);
 
   /* Predicts branch not taken.  */
   if (word1 & 2)
@@ -291,7 +290,7 @@ cobr (bfd_vma memaddr, unsigned long word1, unsigned long word2 ATTRIBUTE_UNUSED
     /* M1 is 1 */
     (*info->fprintf_func) (stream, "%d", src1);
   else
-    (*info->fprintf_func) (stream, reg_names[src1]);
+    (*info->fprintf_func) (stream, "%s", reg_names[src1]);
 
   if (cobr_tab[i].numops > 1)
     {
@@ -717,7 +716,7 @@ reg (unsigned long word1)
       fp = 0;
     }
 
-  (*info->fprintf_func) (stream, mnemp);
+  (*info->fprintf_func) (stream, "%s", mnemp);
 
   s1   = (word1 >> 5)  & 1;
   s2   = (word1 >> 6)  & 1;
@@ -853,7 +852,7 @@ regop (int mode, int spec, int fp_reg, int fp)
       else
 	{
 	  /* Non-FP register.  */
-	  (*info->fprintf_func) (stream, reg_names[fp_reg]);
+	  (*info->fprintf_func) (stream, "%s", reg_names[fp_reg]);
 	}
     }
   else
@@ -868,7 +867,7 @@ regop (int mode, int spec, int fp_reg, int fp)
 	{
 	  /* Register.  */
 	  if (spec == 0)
-	    (*info->fprintf_func) (stream, reg_names[fp_reg]);
+	    (*info->fprintf_func) (stream, "%s", reg_names[fp_reg]);
 	  else
 	    (*info->fprintf_func) (stream, "sf%d", fp_reg);
 	}

@@ -1,7 +1,5 @@
 /* tc-sh.c -- Assemble code for the Renesas / SuperH SH
-   Copyright 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002,
-   2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1993-2014 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -767,9 +765,10 @@ sh_check_fixup (expressionS *main_exp, bfd_reloc_code_real_type *r_type_p)
 /* Add expression EXP of SIZE bytes to offset OFF of fragment FRAG.  */
 
 void
-sh_cons_fix_new (fragS *frag, int off, int size, expressionS *exp)
+sh_cons_fix_new (fragS *frag, int off, int size, expressionS *exp,
+		 bfd_reloc_code_real_type r_type)
 {
-  bfd_reloc_code_real_type r_type = BFD_RELOC_UNUSED;
+  r_type = BFD_RELOC_UNUSED;
 
   if (sh_check_fixup (exp, &r_type))
     as_bad (_("Invalid PIC expression."));
@@ -789,11 +788,9 @@ sh_cons_fix_new (fragS *frag, int off, int size, expressionS *exp)
 	r_type = BFD_RELOC_32;
 	break;
 
-#ifdef HAVE_SH64
       case 8:
 	r_type = BFD_RELOC_64;
 	break;
-#endif
 
       default:
 	goto error;
@@ -933,10 +930,11 @@ sh_optimize_expr (expressionS *l, operatorT op, expressionS *r)
 					 symbol_get_frag (r->X_add_symbol),
 					 &frag_off))
     {
-      l->X_add_number -= r->X_add_number;
-      l->X_add_number -= frag_off / OCTETS_PER_BYTE;
-      l->X_add_number += (S_GET_VALUE (l->X_add_symbol)
-			  - S_GET_VALUE (r->X_add_symbol));
+      offsetT symval_diff = S_GET_VALUE (l->X_add_symbol)
+			    - S_GET_VALUE (r->X_add_symbol);
+      subtract_from_result (l, r->X_add_number, r->X_extrabit);
+      subtract_from_result (l, frag_off / OCTETS_PER_BYTE, 0);
+      add_to_result (l, symval_diff, symval_diff < 0);
       l->X_op = O_constant;
       l->X_add_symbol = 0;
       return 1;
@@ -3968,6 +3966,11 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
      the other symbol.  We have to adjust the relocation type here.  */
   if (fixP->fx_pcrel)
     {
+#ifndef HAVE_SH64
+      /* Safeguard; this must not occur for non-sh64 configurations.  */
+      gas_assert (fixP->fx_r_type != BFD_RELOC_64);
+#endif
+
       switch (fixP->fx_r_type)
 	{
 	default:
@@ -4165,6 +4168,12 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
       buf[lowbyte] = val & 0xff;
       buf[highbyte] |= (val >> 8) & 0xf;
       break;
+
+#ifndef HAVE_SH64
+    case BFD_RELOC_64:
+      apply_full_field_fix (fixP, buf, *valP, 8);
+      break;
+#endif
 
     case BFD_RELOC_32:
     case BFD_RELOC_32_PCREL:
@@ -4426,7 +4435,7 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixp)
   if (SWITCH_TABLE (fixp))
     {
       *rel->sym_ptr_ptr = symbol_get_bfdsym (fixp->fx_subsy);
-      rel->addend = 0;
+      rel->addend = rel->address - S_GET_VALUE(fixp->fx_subsy);
       if (r_type == BFD_RELOC_16)
 	r_type = BFD_RELOC_SH_SWITCH16;
       else if (r_type == BFD_RELOC_8)

@@ -1,4 +1,4 @@
-There are 18 section headers, starting at offset 0x21cc:
+There are 18 section headers, starting at offset .*:
 
 Section Headers:
   \[Nr\] Name              Type            Addr     Off    Size   ES Flg Lk Inf Al
@@ -6,11 +6,11 @@ Section Headers:
   \[ 1\] \.hash             HASH            00008000 001000 000048 04   A  2   0  4
   \[ 2\] \.dynsym           DYNSYM          00008048 001048 0000d0 10   A  3   6  4
   \[ 3\] \.dynstr           STRTAB          00008118 001118 000025 00   A  0   0  1
-  \[ 4\] \.rela\.text        RELA            00008140 001140 00000c 0c   A  2  10  4
-  \[ 5\] \.rela\.got         RELA            0000814c 00114c 000024 0c   A  2  11  4
-  \[ 6\] \.rela\.neardata    RELA            00008170 001170 000018 0c   A  2  12  4
+  \[ 4\] \.rela\.text        RELA            00008140 001140 00000c 0c  AI  2  10  4
+  \[ 5\] \.rela\.got         RELA            0000814c 00114c 000024 0c  AI  2  11  4
+  \[ 6\] \.rela\.neardata    RELA            00008170 001170 000018 0c  AI  2  12  4
   \[ 7\] \.dynamic          DYNAMIC         00008188 001188 0000b0 08  WA  3   0  4
-  \[ 8\] \.rela\.plt         RELA            10000000 002000 000018 0c   A  2   9  4
+  \[ 8\] \.rela\.plt         RELA            10000000 002000 000018 0c  AI  2   9  4
   \[ 9\] \.plt              PROGBITS        10000020 002020 000060 18  AX  0   0 32
   \[10\] \.text             PROGBITS        10000080 002080 000080 00  AX  0   0 32
   \[11\] \.got              PROGBITS        10000100 002100 000028 00  WA  0   0  4
@@ -18,8 +18,8 @@ Section Headers:
   \[13\] \.bss              NOBITS          10000130 002130 000004 00  WA  0   0  4
   \[14\] \.c6xabi\.attributes C6000_ATTRIBUTES 00000000 002130 000019 00      0   0  1
   \[15\] \.shstrtab         STRTAB          00000000 002149 000080 00      0   0  1
-  \[16\] \.symtab           SYMTAB          00000000 00249c 0001b0 10     17  20  4
-  \[17\] \.strtab           STRTAB          00000000 00264c 000059 00      0   0  1
+  \[16\] \.symtab           SYMTAB          00000000 [0-9a-f]+ [0-9a-f]+ 10     17  [0-9]+  4
+  \[17\] \.strtab           STRTAB          00000000 [0-9a-f]+ [0-9a-f]+ 00      0   0  1
 Key to Flags:
   W \(write\), A \(alloc\), X \(execute\), M \(merge\), S \(strings\)
   I \(info\), L \(link order\), G \(group\), T \(TLS\), E \(exclude\), x \(unknown\)
@@ -91,7 +91,7 @@ Symbol table '\.dynsym' contains 13 entries:
      3: 10000100     0 SECTION LOCAL  DEFAULT   11 
      4: 10000128     0 SECTION LOCAL  DEFAULT   12 
      5: 10000130     0 SECTION LOCAL  DEFAULT   13 
-     6: 10000100     0 NOTYPE  LOCAL  DEFAULT  ABS __c6xabi_DSBT_BASE
+     6: 10000100     0 NOTYPE  LOCAL  DEFAULT   11 __c6xabi_DSBT_BASE
      7: 00000000     0 NOTYPE  WEAK   DEFAULT  UND b
      8: 00000000     0 NOTYPE  WEAK   DEFAULT  UND g1
      9: 1000012c     4 OBJECT  GLOBAL DEFAULT   12 g2
@@ -99,32 +99,33 @@ Symbol table '\.dynsym' contains 13 entries:
     11: 10000128     4 OBJECT  GLOBAL DEFAULT   12 a
     12: 100000c0    52 FUNC    GLOBAL DEFAULT   10 sub
 
-Symbol table '\.symtab' contains 27 entries:
+Symbol table '\.symtab' contains [0-9]+ entries:
    Num:    Value  Size Type    Bind   Vis      Ndx Name
-     0: 00000000     0 NOTYPE  LOCAL  DEFAULT  UND 
-     1: 00008000     0 SECTION LOCAL  DEFAULT    1 
-     2: 00008048     0 SECTION LOCAL  DEFAULT    2 
-     3: 00008118     0 SECTION LOCAL  DEFAULT    3 
-     4: 00008140     0 SECTION LOCAL  DEFAULT    4 
-     5: 0000814c     0 SECTION LOCAL  DEFAULT    5 
-     6: 00008170     0 SECTION LOCAL  DEFAULT    6 
-     7: 00008188     0 SECTION LOCAL  DEFAULT    7 
-     8: 10000000     0 SECTION LOCAL  DEFAULT    8 
-     9: 10000020     0 SECTION LOCAL  DEFAULT    9 
-    10: 10000080     0 SECTION LOCAL  DEFAULT   10 
-    11: 10000100     0 SECTION LOCAL  DEFAULT   11 
-    12: 10000128     0 SECTION LOCAL  DEFAULT   12 
-    13: 10000130     0 SECTION LOCAL  DEFAULT   13 
-    14: 00000000     0 SECTION LOCAL  DEFAULT   14 
-    15: 10000080     0 FUNC    LOCAL  HIDDEN    10 sub1
-    16: 00008188     0 OBJECT  LOCAL  DEFAULT  ABS _DYNAMIC
-    17: 10000130     4 OBJECT  LOCAL  DEFAULT   13 c
-    18: 1000010c     0 OBJECT  LOCAL  DEFAULT  ABS _GLOBAL_OFFSET_TABLE_
-    19: 10000100     0 NOTYPE  LOCAL  DEFAULT  ABS __c6xabi_DSBT_BASE
-    20: 00000000     0 NOTYPE  WEAK   DEFAULT  UND b
-    21: 00020000     0 OBJECT  GLOBAL DEFAULT  ABS __stacksize
-    22: 00000000     0 NOTYPE  WEAK   DEFAULT  UND g1
-    23: 1000012c     4 OBJECT  GLOBAL DEFAULT   12 g2
-    24: 10000088    52 FUNC    GLOBAL DEFAULT   10 sub0
-    25: 10000128     4 OBJECT  GLOBAL DEFAULT   12 a
-    26: 100000c0    52 FUNC    GLOBAL DEFAULT   10 sub
+.* 00000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+.* 00008000     0 SECTION LOCAL  DEFAULT    1 
+.* 00008048     0 SECTION LOCAL  DEFAULT    2 
+.* 00008118     0 SECTION LOCAL  DEFAULT    3 
+.* 00008140     0 SECTION LOCAL  DEFAULT    4 
+.* 0000814c     0 SECTION LOCAL  DEFAULT    5 
+.* 00008170     0 SECTION LOCAL  DEFAULT    6 
+.* 00008188     0 SECTION LOCAL  DEFAULT    7 
+.* 10000000     0 SECTION LOCAL  DEFAULT    8 
+.* 10000020     0 SECTION LOCAL  DEFAULT    9 
+.* 10000080     0 SECTION LOCAL  DEFAULT   10 
+.* 10000100     0 SECTION LOCAL  DEFAULT   11 
+.* 10000128     0 SECTION LOCAL  DEFAULT   12 
+.* 10000130     0 SECTION LOCAL  DEFAULT   13 
+.* 00000000     0 SECTION LOCAL  DEFAULT   14 
+.* 00000000     0 FILE    LOCAL  DEFAULT  ABS .*
+.* 10000080     0 FUNC    LOCAL  HIDDEN    10 sub1
+.* 10000130     4 OBJECT  LOCAL  DEFAULT   13 c
+.* 00000000     0 FILE    LOCAL  DEFAULT  ABS .*
+.* 00008188     0 OBJECT  LOCAL  DEFAULT  ABS _DYNAMIC
+.* 1000010c     0 OBJECT  LOCAL  DEFAULT  ABS _GLOBAL_OFFSET_TABLE_
+.* 10000100     0 NOTYPE  LOCAL  DEFAULT   11 __c6xabi_DSBT_BASE
+.* 00000000     0 NOTYPE  WEAK   DEFAULT  UND b
+.* 00000000     0 NOTYPE  WEAK   DEFAULT  UND g1
+.* 1000012c     4 OBJECT  GLOBAL DEFAULT   12 g2
+.* 10000088    52 FUNC    GLOBAL DEFAULT   10 sub0
+.* 10000128     4 OBJECT  GLOBAL DEFAULT   12 a
+.* 100000c0    52 FUNC    GLOBAL DEFAULT   10 sub

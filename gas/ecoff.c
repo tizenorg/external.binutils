@@ -1,7 +1,5 @@
 /* ECOFF debugging support.
-   Copyright 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002,
-   2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1993-2014 Free Software Foundation, Inc.
    Contributed by Cygnus Support.
    This file was put together by Ian Lance Taylor <ian@cygnus.com>.  A
    good deal of it comes directly from mips-tfile.c, by Michael
@@ -27,8 +25,7 @@
 #include "as.h"
 
 /* This file is compiled conditionally for those targets which use
-   ECOFF debugging information (e.g., MIPS ECOFF, MIPS ELF, Alpha
-   ECOFF).  */
+   ECOFF debugging information (e.g., MIPS ELF, Alpha ECOFF).  */
 
 #include "ecoff.h"
 
@@ -2535,7 +2532,7 @@ ecoff_directive_def (int ignore ATTRIBUTE_UNUSED)
 	free (coff_sym_name);
       if (coff_tag != (char *) NULL)
 	free (coff_tag);
-      
+
       coff_sym_name = xstrdup (name);
       coff_type = type_info_init;
       coff_storage_class = sc_Nil;
@@ -3589,12 +3586,12 @@ ecoff_frob_symbol (symbolS *sym)
          but with the name .scommon.  */
       if (scom_section.name == NULL)
 	{
-	  scom_section = bfd_com_section;
+	  scom_section = *bfd_com_section_ptr;
 	  scom_section.name = ".scommon";
 	  scom_section.output_section = &scom_section;
 	  scom_section.symbol = &scom_symbol;
 	  scom_section.symbol_ptr_ptr = &scom_section.symbol;
-	  scom_symbol = *bfd_com_section.symbol;
+	  scom_symbol = *bfd_com_section_ptr->symbol;
 	  scom_symbol.name = ".scommon";
 	  scom_symbol.section = &scom_section;
 	}
@@ -4076,7 +4073,7 @@ ecoff_build_symbols (const struct ecoff_debug_swap *backend,
 			    sc = sc_Bss;
 			  else if (strcmp (segname, ".sbss") == 0)
 			    sc = sc_SBss;
-			  else if (seg == &bfd_abs_section)
+			  else if (seg == bfd_abs_section_ptr)
 			    sc = sc_Abs;
 			  else
 			    {

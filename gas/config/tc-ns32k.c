@@ -1,7 +1,5 @@
 /* ns32k.c  -- Assemble on the National Semiconductor 32k series
-   Copyright 1987, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-   2001, 2002, 2003, 2005, 2006, 2007, 2008, 2009
-   Free Software Foundation, Inc.
+   Copyright (C) 1987-2014 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -1896,7 +1894,7 @@ md_begin (void)
 {
   /* Build a hashtable of the instructions.  */
   const struct ns32k_opcode *ptr;
-  const char *stat;
+  const char *status;
   const struct ns32k_opcode *endop;
 
   inst_hash_handle = hash_new ();
@@ -1904,9 +1902,9 @@ md_begin (void)
   endop = ns32k_opcodes + sizeof (ns32k_opcodes) / sizeof (ns32k_opcodes[0]);
   for (ptr = ns32k_opcodes; ptr < endop; ptr++)
     {
-      if ((stat = hash_insert (inst_hash_handle, ptr->name, (char *) ptr)))
+      if ((status = hash_insert (inst_hash_handle, ptr->name, (char *) ptr)))
 	/* Fatal.  */
-	as_fatal (_("Can't hash %s: %s"), ptr->name, stat);
+	as_fatal (_("Can't hash %s: %s"), ptr->name, status);
     }
 
   /* Some private space please!  */
@@ -2183,7 +2181,8 @@ void
 cons_fix_new_ns32k (fragS *frag,	/* Which frag? */
 		    int where,		/* Where in that frag? */
 		    int size,		/* 1, 2  or 4 usually.  */
-		    expressionS *exp)	/* Expression.  */
+		    expressionS *exp,	/* Expression.  */
+		    bfd_reloc_code_real_type r ATTRIBUTE_UNUSED)
 {
   fix_new_ns32k_exp (frag, where, size, exp,
 		     0, 2, 0, 0, 0, 0);

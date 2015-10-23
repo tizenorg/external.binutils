@@ -1,5 +1,5 @@
 /* tc-tilegx.h - Macros and type defines for a TILE-Gx chip.
-   Copyright 2011 Free Software Foundation, Inc.
+   Copyright (C) 2011-2014 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -24,7 +24,9 @@
 
 #define TC_TILEGX
 
+#ifndef TARGET_BYTES_BIG_ENDIAN
 #define TARGET_BYTES_BIG_ENDIAN 0
+#endif
 
 #define WORKING_DOT_WORD
 
@@ -34,8 +36,6 @@ extern const char * tilegx_target_format (void);
 #define TARGET_FORMAT tilegx_target_format ()
 
 #define DWARF2_LINE_MIN_INSN_LENGTH	8
-
-#define md_number_to_chars		number_to_chars_littleendian
 
 #define DIFF_EXPR_OK   /* foo-. gets turned into PC relative relocs */
 
@@ -53,7 +53,7 @@ struct tilegx_operand;
 
 extern void tilegx_cons_fix_new (struct frag *, int,
 				 int, struct expressionS *);
-#define TC_CONS_FIX_NEW(FRAG, WHERE, NBYTES, EXP) \
+#define TC_CONS_FIX_NEW(FRAG, WHERE, NBYTES, EXP, RELOC)	\
   tilegx_cons_fix_new (FRAG, WHERE, NBYTES, EXP)
 
 extern int tilegx_parse_name (char *, expressionS *, char *);

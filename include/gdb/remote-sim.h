@@ -1,7 +1,6 @@
 /* This file defines the interface between the simulator and gdb.
 
-   Copyright 1993, 1994, 1996, 1997, 1998, 2000, 2002, 2007, 2008, 2009, 2010,
-   2011 Free Software Foundation, Inc.
+   Copyright (C) 1993-2014 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -141,7 +140,7 @@ void sim_close (SIM_DESC sd, int quitting);
    Such manipulation should probably (?) occure in
    sim_create_inferior. */
 
-SIM_RC sim_load (SIM_DESC sd, char *prog, struct bfd *abfd, int from_tty);
+SIM_RC sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty);
 
 
 /* Prepare to run the simulated program.
@@ -274,12 +273,12 @@ void sim_stop_reason (SIM_DESC sd, enum sim_stop *reason, int *sigrc);
    Simulators should be prepared to deal with any combination of NULL
    or empty CMD. */
 
-void sim_do_command (SIM_DESC sd, char *cmd);
+void sim_do_command (SIM_DESC sd, const char *cmd);
 
 /* Complete a command based on the available sim commands.  Returns an
    array of possible matches.  */
 
-char **sim_complete_command (SIM_DESC sd, char *text, char *word);
+char **sim_complete_command (SIM_DESC sd, const char *text, const char *word);
 
 #ifdef __cplusplus
 }

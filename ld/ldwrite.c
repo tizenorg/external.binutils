@@ -1,7 +1,5 @@
 /* ldwrite.c -- write out the linked file
-   Copyright 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 2000, 2002,
-   2003, 2004, 2005, 2006, 2007, 2008, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1991-2014 Free Software Foundation, Inc.
    Written by Steve Chamberlain sac@cygnus.com
 
    This file is part of the GNU Binutils.
@@ -183,6 +181,7 @@ build_link_order (lang_statement_union_type *statement)
 	  default:
 	    abort ();
 	  }
+	link_order->u.data.size = link_order->size;
       }
       break;
 
@@ -240,7 +239,7 @@ build_link_order (lang_statement_union_type *statement)
 	   attached */
 	asection *i = statement->input_section.section;
 
-	if (!((lang_input_statement_type *) i->owner->usrdata)->just_syms_flag
+	if (i->sec_info_type != SEC_INFO_TYPE_JUST_SYMS
 	    && (i->flags & SEC_EXCLUDE) == 0)
 	  {
 	    asection *output_section = i->output_section;
@@ -337,7 +336,7 @@ clone_section (bfd *abfd, asection *s, const char *name, int *count)
 {
   char *tname;
   char *sname;
-  unsigned int len;	
+  unsigned int len;
   asection *n;
   struct bfd_link_hash_entry *h;
 
@@ -573,6 +572,7 @@ ldwrite (void)
   /* Reset error indicator, which can typically something like invalid
      format from opening up the .o files.  */
   bfd_set_error (bfd_error_no_error);
+  lang_clear_os_map ();
   lang_for_each_statement (build_link_order);
 
   if (config.split_by_reloc != (unsigned) -1

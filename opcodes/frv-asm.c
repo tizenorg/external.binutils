@@ -4,8 +4,7 @@
    THIS FILE IS MACHINE GENERATED WITH CGEN.
    - the resultant file is machine generated, cgen-asm.in isn't
 
-   Copyright 1996, 1997, 1998, 1999, 2000, 2001, 2005, 2007, 2008, 2010
-   Free Software Foundation, Inc.
+   Copyright (C) 1996-2014 Free Software Foundation, Inc.
 
    This file is part of libopcodes.
 
@@ -465,11 +464,11 @@ parse_uhi16 (CGEN_CPU_DESC cd,
 	  if (errmsg == NULL
 	      && result_type == CGEN_PARSE_OPERAND_RESULT_NUMBER)
 	    {
-	      /* If bfd_vma is wider than 32 bits, but we have a sign-
-		 or zero-extension, truncate it.  */
-	      if (value >= - ((bfd_vma)1 << 31)
-		  || value <= ((bfd_vma)1 << 31) - (bfd_vma)1)
-		value &= (((bfd_vma)1 << 16) << 16) - 1;
+ 	      /* If value is wider than 32 bits then be
+ 		 careful about how we extract bits 16-31.  */
+ 	      if (sizeof (value) > 4)
+ 		value &= (((bfd_vma)1 << 16) << 16) - 1;
+
 	      value >>= 16;
 	    }
 	  *valuep = value;

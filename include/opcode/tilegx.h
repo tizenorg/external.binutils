@@ -1,6 +1,6 @@
 /* TILE-Gx opcode information.
  *
- *    Copyright 2011 Free Software Foundation, Inc.
+ *    Copyright (C) 2011-2014 Free Software Foundation, Inc.
  *
  *    This program is free software; you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -34,6 +34,8 @@ typedef enum
   TILEGX_OPC_BPT,
   TILEGX_OPC_INFO,
   TILEGX_OPC_INFOL,
+  TILEGX_OPC_LD4S_TLS,
+  TILEGX_OPC_LD_TLS,
   TILEGX_OPC_MOVE,
   TILEGX_OPC_MOVEI,
   TILEGX_OPC_MOVELI,

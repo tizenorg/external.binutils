@@ -1,5 +1,5 @@
 /* obj-evax.c - EVAX (openVMS/Alpha) object file format.
-   Copyright 1996, 1997, 2005, 2007, 2008, 2009 Free Software Foundation, Inc.
+   Copyright (C) 1996-2014 Free Software Foundation, Inc.
    Contributed by Klaus Kämpf (kkaempf@progis.de) of
      proGIS Software, Aachen, Germany.
    Extensively enhanced by Douglas Rupp of AdaCore.
@@ -23,9 +23,9 @@
 
 #define OBJ_HEADER "obj-evax.h"
 
+#include "as.h"
 #include "bfd.h"
 #include "vms.h"
-#include "as.h"
 #include "subsegs.h"
 #include "struc-symbol.h"
 #include "safe-ctype.h"

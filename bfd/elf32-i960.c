@@ -1,6 +1,5 @@
 /* Intel 960 specific support for 32-bit ELF
-   Copyright 1999, 2000, 2001, 2002, 2003, 2005, 2007
-   Free Software Foundation, Inc.
+   Copyright (C) 1999-2014 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -47,7 +46,7 @@ static bfd_reloc_status_type
 elf32_i960_relocate (bfd *abfd ATTRIBUTE_UNUSED,
 		     arelent *reloc_entry,
 		     asymbol *symbol,
-		     PTR data ATTRIBUTE_UNUSED,
+		     void * data ATTRIBUTE_UNUSED,
 		     asection *input_section,
 		     bfd *output_bfd,
 		     char **error_message ATTRIBUTE_UNUSED)
@@ -159,7 +158,7 @@ elf32_i960_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED,
   return NULL;
 }
 
-#define TARGET_LITTLE_SYM	bfd_elf32_i960_vec
+#define TARGET_LITTLE_SYM	i960_elf32_vec
 #define TARGET_LITTLE_NAME	"elf32-i960"
 #define ELF_ARCH		bfd_arch_i960
 #define ELF_MACHINE_CODE	EM_960

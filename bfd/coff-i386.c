@@ -1,7 +1,5 @@
 /* BFD back-end for Intel 386 COFF files.
-   Copyright 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999,
-   2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011
-   Free Software Foundation, Inc.
+   Copyright (C) 1990-2014 Free Software Foundation, Inc.
    Written by Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -43,8 +41,6 @@
 
 #include "libcoff.h"
 
-static bfd_reloc_status_type coff_i386_reloc
-  (bfd *, arelent *, asymbol *, PTR, asection *, bfd *, char **);
 static reloc_howto_type *coff_i386_rtype_to_howto
   (bfd *, asection *, struct internal_reloc *,
    struct coff_link_hash_entry *, struct internal_syment *,
@@ -67,15 +63,13 @@ static reloc_howto_type *coff_i386_reloc_type_lookup
    reloc type to make any required adjustments.  */
 
 static bfd_reloc_status_type
-coff_i386_reloc (abfd, reloc_entry, symbol, data, input_section, output_bfd,
-		 error_message)
-     bfd *abfd;
-     arelent *reloc_entry;
-     asymbol *symbol;
-     PTR data;
-     asection *input_section ATTRIBUTE_UNUSED;
-     bfd *output_bfd;
-     char **error_message ATTRIBUTE_UNUSED;
+coff_i386_reloc (bfd *abfd,
+		 arelent *reloc_entry,
+		 asymbol *symbol,
+		 void * data,
+		 asection *input_section ATTRIBUTE_UNUSED,
+		 bfd *output_bfd,
+		 char **error_message ATTRIBUTE_UNUSED)
 {
   symvalue diff;
 
@@ -189,11 +183,8 @@ coff_i386_reloc (abfd, reloc_entry, symbol, data, input_section, output_bfd,
 /* Return TRUE if this relocation should appear in the output .reloc
    section.  */
 
-static bfd_boolean in_reloc_p PARAMS ((bfd *, reloc_howto_type *));
-
-static bfd_boolean in_reloc_p (abfd, howto)
-     bfd * abfd ATTRIBUTE_UNUSED;
-     reloc_howto_type *howto;
+static bfd_boolean in_reloc_p (bfd * abfd ATTRIBUTE_UNUSED,
+			       reloc_howto_type *howto)
 {
   return ! howto->pc_relative && howto->type != R_IMAGEBASE
 	 && howto->type != R_SECREL32;
@@ -349,16 +340,18 @@ static reloc_howto_type howto_table[] =
 	 PCRELOFFSET)		/* pcrel_offset */
 };
 
+#define NUM_HOWTOS (sizeof (howto_table) / sizeof (howto_table[0]))
+
 /* Turn a howto into a reloc  nunmber */
 
 #define SELECT_RELOC(x,howto) { x.r_type = howto->type; }
 #define BADMAG(x) I386BADMAG(x)
 #define I386 1			/* Customize coffcode.h */
 
-#define RTYPE2HOWTO(cache_ptr, dst)					\
-  ((cache_ptr)->howto =							\
-   ((dst)->r_type < sizeof (howto_table) / sizeof (howto_table[0])	\
-    ? howto_table + (dst)->r_type					\
+#define RTYPE2HOWTO(cache_ptr, dst)				\
+  ((cache_ptr)->howto =						\
+   ((dst)->r_type < NUM_HOWTOS					\
+    ? howto_table + (dst)->r_type				\
     : NULL))
 
 /* For 386 COFF a STYP_NOLOAD | STYP_BSS section is part of a shared
@@ -395,7 +388,8 @@ static reloc_howto_type howto_table[] =
       cache_ptr->addend = - (ptr->section->vma + ptr->value);	\
     else							\
       cache_ptr->addend = 0;					\
-    if (ptr && howto_table[reloc.r_type].pc_relative)		\
+    if (ptr && reloc.r_type < NUM_HOWTOS			\
+	&& howto_table[reloc.r_type].pc_relative)		\
       cache_ptr->addend += asect->vma;				\
   }
 
@@ -413,22 +407,15 @@ static reloc_howto_type howto_table[] =
    and the regular routine is that we don't want to do anything for a
    relocatable link.  */
 
-static bfd_boolean coff_pe_i386_relocate_section
-  PARAMS ((bfd *, struct bfd_link_info *, bfd *, asection *, bfd_byte *,
-	   struct internal_reloc *, struct internal_syment *, asection **));
-
 static bfd_boolean
-coff_pe_i386_relocate_section (output_bfd, info, input_bfd,
-			       input_section, contents, relocs, syms,
-			       sections)
-     bfd *output_bfd;
-     struct bfd_link_info *info;
-     bfd *input_bfd;
-     asection *input_section;
-     bfd_byte *contents;
-     struct internal_reloc *relocs;
-     struct internal_syment *syms;
-     asection **sections;
+coff_pe_i386_relocate_section (bfd *output_bfd,
+			       struct bfd_link_info *info,
+			       bfd *input_bfd,
+			       asection *input_section,
+			       bfd_byte *contents,
+			       struct internal_reloc *relocs,
+			       struct internal_syment *syms,
+			       asection **sections)
 {
   if (info->relocatable)
     return TRUE;
@@ -445,17 +432,16 @@ coff_pe_i386_relocate_section (output_bfd, info, input_bfd,
 /* Convert an rtype to howto for the COFF backend linker.  */
 
 static reloc_howto_type *
-coff_i386_rtype_to_howto (abfd, sec, rel, h, sym, addendp)
-     bfd *abfd ATTRIBUTE_UNUSED;
-     asection *sec;
-     struct internal_reloc *rel;
-     struct coff_link_hash_entry *h;
-     struct internal_syment *sym;
-     bfd_vma *addendp;
+coff_i386_rtype_to_howto (bfd *abfd ATTRIBUTE_UNUSED,
+			  asection *sec,
+			  struct internal_reloc *rel,
+			  struct coff_link_hash_entry *h,
+			  struct internal_syment *sym,
+			  bfd_vma *addendp)
 {
   reloc_howto_type *howto;
 
-  if (rel->r_type >= sizeof (howto_table) / sizeof (howto_table[0]))
+  if (rel->r_type >= NUM_HOWTOS)
     {
       bfd_set_error (bfd_error_bad_value);
       return NULL;
@@ -528,8 +514,8 @@ coff_i386_rtype_to_howto (abfd, sec, rel, h, sym, addendp)
     {
       bfd_vma osect_vma;
 
-      if (h && (h->type == bfd_link_hash_defined
-		|| h->type == bfd_link_hash_defweak))
+      if (h && (h->root.type == bfd_link_hash_defined
+		|| h->root.type == bfd_link_hash_defweak))
 	osect_vma = h->root.u.def.section->output_section->vma;
       else
 	{
@@ -556,9 +542,8 @@ coff_i386_rtype_to_howto (abfd, sec, rel, h, sym, addendp)
 #define coff_bfd_reloc_name_lookup coff_i386_reloc_name_lookup
 
 static reloc_howto_type *
-coff_i386_reloc_type_lookup (abfd, code)
-     bfd *abfd ATTRIBUTE_UNUSED;
-     bfd_reloc_code_real_type code;
+coff_i386_reloc_type_lookup (bfd *abfd ATTRIBUTE_UNUSED,
+			     bfd_reloc_code_real_type code)
 {
   switch (code)
     {
@@ -592,7 +577,7 @@ coff_i386_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED,
 {
   unsigned int i;
 
-  for (i = 0; i < sizeof (howto_table) / sizeof (howto_table[0]); i++)
+  for (i = 0; i < NUM_HOWTOS; i++)
     if (howto_table[i].name != NULL
 	&& strcasecmp (howto_table[i].name, r_name) == 0)
       return &howto_table[i];
@@ -608,13 +593,8 @@ coff_i386_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED,
    a leading dot for local labels, so if TARGET_UNDERSCORE is defined
    we treat all symbols starting with L as local.  */
 
-static bfd_boolean coff_i386_is_local_label_name
-  PARAMS ((bfd *, const char *));
-
 static bfd_boolean
-coff_i386_is_local_label_name (abfd, name)
-     bfd *abfd;
-     const char *name;
+coff_i386_is_local_label_name (bfd *abfd, const char *name)
 {
   if (name[0] == 'L')
     return TRUE;
@@ -632,7 +612,7 @@ const bfd_target
 #ifdef TARGET_SYM
   TARGET_SYM =
 #else
-  i386coff_vec =
+  i386_coff_vec =
 #endif
 {
 #ifdef TARGET_NAME
@@ -646,13 +626,13 @@ const bfd_target
 
   (HAS_RELOC | EXEC_P |		/* object flags */
    HAS_LINENO | HAS_DEBUG |
-   HAS_SYMS | HAS_LOCALS | WP_TEXT | D_PAGED),
+   HAS_SYMS | HAS_LOCALS | WP_TEXT | D_PAGED | BFD_COMPRESS | BFD_DECOMPRESS ),
 
   (SEC_HAS_CONTENTS | SEC_ALLOC | SEC_LOAD | SEC_RELOC /* section flags */
 #ifdef COFF_WITH_PE
-   | SEC_LINK_ONCE | SEC_LINK_DUPLICATES | SEC_READONLY
+   | SEC_LINK_ONCE | SEC_LINK_DUPLICATES | SEC_READONLY | SEC_DEBUGGING
 #endif
-   | SEC_CODE | SEC_DATA),
+   | SEC_CODE | SEC_DATA | SEC_EXCLUDE ),
 
 #ifdef TARGET_UNDERSCORE
   TARGET_UNDERSCORE,		/* leading underscore */

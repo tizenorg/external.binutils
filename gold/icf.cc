@@ -1,6 +1,6 @@
 // icf.cc -- Identical Code Folding.
 //
-// Copyright 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2009-2014 Free Software Foundation, Inc.
 // Written by Sriraman Tallam <tmsriram@google.com>.
 
 // This file is part of gold.
@@ -269,25 +269,44 @@ get_section_contents(bool first_iteration,
 
   if (it_reloc_info_list != reloc_info_list.end())
     {
-      Icf::Sections_reachable_info v =
+      Icf::Sections_reachable_info &v =
         (it_reloc_info_list->second).section_info;
       // Stores the information of the symbol pointed to by the reloc.
-      Icf::Symbol_info s = (it_reloc_info_list->second).symbol_info;
+      const Icf::Symbol_info &s = (it_reloc_info_list->second).symbol_info;
       // Stores the addend and the symbol value.
-      Icf::Addend_info a = (it_reloc_info_list->second).addend_info;
+      Icf::Addend_info &a = (it_reloc_info_list->second).addend_info;
       // Stores the offset of the reloc.
-      Icf::Offset_info o = (it_reloc_info_list->second).offset_info;
-      Icf::Reloc_addend_size_info reloc_addend_size_info =
+      const Icf::Offset_info &o = (it_reloc_info_list->second).offset_info;
+      const Icf::Reloc_addend_size_info &reloc_addend_size_info =
         (it_reloc_info_list->second).reloc_addend_size_info;
       Icf::Sections_reachable_info::iterator it_v = v.begin();
-      Icf::Symbol_info::iterator it_s = s.begin();
+      Icf::Symbol_info::const_iterator it_s = s.begin();
       Icf::Addend_info::iterator it_a = a.begin();
-      Icf::Offset_info::iterator it_o = o.begin();
-      Icf::Reloc_addend_size_info::iterator it_addend_size =
+      Icf::Offset_info::const_iterator it_o = o.begin();
+      Icf::Reloc_addend_size_info::const_iterator it_addend_size =
         reloc_addend_size_info.begin();
 
       for (; it_v != v.end(); ++it_v, ++it_s, ++it_a, ++it_o, ++it_addend_size)
         {
+	  if (first_iteration
+	      && it_v->first != NULL)
+	    {
+	      Symbol_location loc;
+	      loc.object = it_v->first;
+	      loc.shndx = it_v->second;
+	      loc.offset = convert_types<off_t, long long>(it_a->first
+							   + it_a->second);
+	      // Look through function descriptors
+	      parameters->target().function_location(&loc);
+	      if (loc.shndx != it_v->second)
+		{
+		  it_v->second = loc.shndx;
+		  // Modify symvalue/addend to the code entry.
+		  it_a->first = loc.offset;
+		  it_a->second = 0;
+		}
+	    }
+
           // ADDEND_STR stores the symbol value and addend and offset,
           // each at most 16 hex digits long.  it_a points to a pair
           // where first is the symbol value and second is the

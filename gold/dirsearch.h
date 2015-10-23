@@ -1,6 +1,6 @@
 // dirsearch.h -- directory searching for gold  -*- C++ -*-
 
-// Copyright 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2006-2014 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -66,6 +66,13 @@ class Dirsearch
   Task_token*
   token()
   { return &this->token_; }
+
+  // Search for a file in a directory list.  This is a low-level function and
+  // therefore can be used before options and parameters are set.
+  static std::string
+  find_file_in_dir_list(const std::string& name,
+                        const General_options::Dir_list& directories,
+                        const std::string& extra_search_dir);
 
  private:
   // We can not copy this class.

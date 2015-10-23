@@ -1,6 +1,6 @@
 // archive.cc -- archive support for gold
 
-// Copyright 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+// Copyright (C) 2006-2014 Free Software Foundation, Inc.
 // Written by Ian Lance Taylor <iant@google.com>.
 
 // This file is part of gold.
@@ -96,41 +96,56 @@ Library_base::should_include_member(Symbol_table* symtab, Layout* layout,
 
   *symp = sym;
 
-  if (sym == NULL)
+  if (sym != NULL)
     {
-      // Check whether the symbol was named in a -u option.
-      if (parameters->options().is_undefined(sym_name))
-        {
-          *why = "-u ";
-          *why += sym_name;
-        }
-      else if (layout->script_options()->is_referenced(sym_name))
-	{
-	  size_t alc = 100 + strlen(sym_name);
-	  char* buf = new char[alc];
-	  snprintf(buf, alc, _("script or expression reference to %s"),
-		   sym_name);
-	  *why = buf;
-	  delete[] buf;
-	}
-      else if (strcmp(sym_name, parameters->entry()) == 0)
-	{
-	  *why = "entry symbol ";
-	  *why += sym_name;
-	}
-      else
-	return Library_base::SHOULD_INCLUDE_UNKNOWN;
-    }
-  else if (!sym->is_undefined())
-    return Library_base::SHOULD_INCLUDE_NO;
-  // PR 12001: Do not include an archive when the undefined
-  // symbol has actually been defined on the command line.
-  else if (layout->script_options()->is_pending_assignment(sym_name))
-    return Library_base::SHOULD_INCLUDE_NO;
-  else if (sym->binding() == elfcpp::STB_WEAK)
-    return Library_base::SHOULD_INCLUDE_UNKNOWN;
+      if (!sym->is_undefined())
+	return Library_base::SHOULD_INCLUDE_NO;
 
-  return Library_base::SHOULD_INCLUDE_YES;
+      // PR 12001: Do not include an archive when the undefined
+      // symbol has actually been defined on the command line.
+      if (layout->script_options()->is_pending_assignment(sym_name))
+	return Library_base::SHOULD_INCLUDE_NO;
+
+      // If the symbol is weak undefined, we still need to check
+      // for other reasons (like a -u option).
+      if (sym->binding() != elfcpp::STB_WEAK)
+	return Library_base::SHOULD_INCLUDE_YES;
+    }
+
+  // Check whether the symbol was named in a -u option.
+  if (parameters->options().is_undefined(sym_name))
+    {
+      *why = "-u ";
+      *why += sym_name;
+      return Library_base::SHOULD_INCLUDE_YES;
+    }
+
+  if (parameters->options().is_export_dynamic_symbol(sym_name))
+    {
+      *why = "--export-dynamic-symbol ";
+      *why += sym_name;
+      return Library_base::SHOULD_INCLUDE_YES;
+    }
+
+  if (layout->script_options()->is_referenced(sym_name))
+    {
+      size_t alc = 100 + strlen(sym_name);
+      char* buf = new char[alc];
+      snprintf(buf, alc, _("script or expression reference to %s"),
+	       sym_name);
+      *why = buf;
+      delete[] buf;
+      return Library_base::SHOULD_INCLUDE_YES;
+    }
+
+  if (strcmp(sym_name, parameters->entry()) == 0)
+    {
+      *why = "entry symbol ";
+      *why += sym_name;
+      return Library_base::SHOULD_INCLUDE_YES;
+    }
+
+  return Library_base::SHOULD_INCLUDE_UNKNOWN;
 }
 
 // The header of an entry in the archive.  This is all readable text,
@@ -649,33 +664,45 @@ Archive::get_elf_object_for_member(off_t off, bool* punconfigured)
 				 &member_name))
     return NULL;
 
+  const unsigned char* ehdr;
+  int read_size;
+  Object *obj = NULL;
+  bool is_elf_obj = false;
+
+  if (is_elf_object(input_file, memoff, &ehdr, &read_size))
+    {
+      obj = make_elf_object((std::string(this->input_file_->filename())
+			     + "(" + member_name + ")"),
+			    input_file, memoff, ehdr, read_size,
+			    punconfigured);
+      is_elf_obj = true;
+    }
+
   if (parameters->options().has_plugins())
     {
-      Object* obj = parameters->options().plugins()->claim_file(input_file,
-                                                                memoff,
-                                                                memsize,
-								NULL);
-      if (obj != NULL)
+      Object* plugin_obj
+	= parameters->options().plugins()->claim_file(input_file,
+						      memoff,
+						      memsize,
+						      obj);
+      if (plugin_obj != NULL)
         {
           // The input file was claimed by a plugin, and its symbols
           // have been provided by the plugin.
-          return obj;
+	  // Delete its elf object.
+	  if (obj != NULL)
+	    delete obj;
+          return plugin_obj;
         }
     }
 
-  const unsigned char* ehdr;
-  int read_size;
-  if (!is_elf_object(input_file, memoff, &ehdr, &read_size))
+  if (!is_elf_obj)
     {
       gold_error(_("%s: member at %zu is not an ELF object"),
 		 this->name().c_str(), static_cast<size_t>(off));
       return NULL;
     }
 
-  Object* obj = make_elf_object((std::string(this->input_file_->filename())
-				 + "(" + member_name + ")"),
-				input_file, memoff, ehdr, read_size,
-				punconfigured);
   if (obj == NULL)
     return NULL;
   obj->set_no_export(this->no_export());
@@ -1113,7 +1140,7 @@ unsigned int Lib_group::total_members;
 unsigned int Lib_group::total_members_loaded;
 
 Lib_group::Lib_group(const Input_file_lib* lib, Task* task)
-  : Library_base(task), lib_(lib), members_()
+  : Library_base(task), members_()
 {
   this->members_.resize(lib->size());
 }
